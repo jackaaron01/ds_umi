@@ -1,0 +1,164 @@
+# =============================================================================
+# UMI 开发环境 —— Docker Compose 编排文件
+# =============================================================================
+# 这个文件定义了容器的运行时配置：网络、GPU、显示、数据卷等。
+# 运行时配置（docker-compose.yml）和构建配置（Dockerfile）是分离的 ——
+# 修改 Dockerfile 需要重新 docker compose build，修改本文件只需 docker compose up。
+#
+# 使用方法：
+#   docker compose build              # 构建镜像
+#   docker compose run --rm umi-dev   # 启动容器并进入交互式 shell
+#   docker compose up -d              # 后台启动（如果需要持续运行的服务）
+#   docker compose down               # 停止并清理
+# =============================================================================
+
+# (version removed — deprecated in Docker Compose v5)
+
+services:
+  # -------------------------------------------------------------------------
+  # umi-dev：主开发容器
+  # -------------------------------------------------------------------------
+  # 这是一个"开发容器"而非"生产服务"——它的设计目标是让容器内的开发体验
+  # 尽可能接近原生环境：文件实时同步、GPU 可用、GUI 可显示。
+  umi-dev:
+    # ---- 构建配置 ----
+    build:
+      context: ..                    # Dockerfile 构建上下文为项目根目录
+      dockerfile: docker/Dockerfile  # 使用我们刚才写的 Dockerfile
+      args:                          # 构建参数，从 .env 文件读取
+        - USER_UID=${USER_UID:-1000}
+        - USER_GID=${USER_GID:-1000}
+        - USER_NAME=${USER_NAME:-dev}
+
+    # ---- 容器名称 ----
+    container_name: umi-dev
+
+    # =========================================================================
+    # 网络模式：host
+    # =========================================================================
+    # 为什么必须用 host 网络而不是默认的 bridge？
+    #
+    # 原因 1：ROS2 DDS 发现机制
+    #   ROS2 节点通过 DDS（Data Distribution Service）协议互相发现和通信。
+    #   DDS 使用 UDP 多播（multicast）来发现节点。在 bridge 网络模式下：
+    #     - 容器的 IP 是虚拟的（如 172.17.0.x），通过 NAT 与宿主机通信
+    #     - UDP 多播包通常不被 Docker 的 NAT 正确转发
+    #     - 导致不同容器之间、容器与宿主机之间的 ROS2 节点无法互相发现
+    #   host 网络模式下容器直接使用宿主机的网络栈，ROS2 节点的 DDS 通信
+    #   就像原生运行一样正常工作。
+    #
+    # 原因 2：Quest3 → Hand Tracking Streamer 的 UDP 数据流
+    #   Quest3 通过 WiFi 向宿主机 IP 发送 UDP 数据包（手部追踪数据）。
+    #   在 bridge 模式下，容器有独立 IP，Quest3 无法直接发送到容器内。
+    #   host 模式下，容器的网络栈就是宿主机的，UDP 端口直接可达。
+    #
+    # 代价：host 网络模式下容器与宿主机共享网络命名空间，端口冲突风险增加。
+    #       但对开发环境来说这不是问题——我们不需要隔离，我们需要连通。
+    network_mode: host
+
+    # =========================================================================
+    # GPU 透传（需要先安装 nvidia-container-toolkit）
+    # =========================================================================
+    # 安装方法（在宿主机执行）：
+    #   sudo apt-get update
+    #   sudo apt-get install -y nvidia-container-toolkit
+    #   sudo systemctl restart docker
+    # 安装完成后，取消下面 deploy 块的注释即可启用 GPU
+    #
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+    # =========================================================================
+    # 环境变量
+    # =========================================================================
+    environment:
+      # ---- 显示转发 ----
+      # DISPLAY 是 X11 的核心环境变量。
+      # X 客户端（如 RViz）通过读取 $DISPLAY 知道该连接到哪个 X Server。
+      # 宿主机的 DISPLAY 通常是 :0 或 :1。
+      # 原理：X11 是客户端-服务器架构，应用程序是"客户端"，
+      # 渲染指令通过网络协议发送给"服务器"（就是你面前的显示器）。
+      # 容器内的应用通过 UNIX socket（/tmp/.X11-unix）与宿主机 X Server 通信。
+      - DISPLAY=${DISPLAY:-:0}
+
+      # ---- Qt 优化 ----
+      # QT_X11_NO_MITSHM=1 禁用 MIT-SHM（共享内存扩展）
+      # 原因：Docker 容器与宿主机不共享同一块内存，MIT-SHM 会导致 Qt 应用
+      # （RViz、Gazebo 等）渲染异常或崩溃。禁用后退回使用标准的 X11 协议。
+      - QT_X11_NO_MITSHM=1
+
+      # ---- NVIDIA ----
+      # 告诉 NVIDIA Container Toolkit 启用所有 GPU
+      - NVIDIA_VISIBLE_DEVICES=all
+
+      # ---- ROS2 DDS 配置 ----
+      # ROS_DOMAIN_ID：ROS2 节点的"分组频道"，同一 domain 内的节点才能互相发现。
+      # 默认 0，但如果你的局域网内有其他 ROS2 设备在运行，可能造成干扰。
+      # 设置一个特定值（如 42）可以避免冲突。
+      # 注意：host 网络下，ROS2 节点也能发现局域网内的其他 ROS2 设备。
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+
+      # 让 ROS2 使用 Cyclone DDS（而非默认的 Fast DDS）
+      # Cyclone DDS 在 host 网络模式下更稳定，尤其是 WiFi 环境
+      # 如果遇到 DDS 发现问题，优先检查这里
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+
+      # ---- 用户配置 ----
+      # 容器内 username，方便在提示符中识别
+      - USER=${USER_NAME:-dev}
+
+    # =========================================================================
+    # 数据卷挂载
+    # =========================================================================
+    volumes:
+      # ---- 源码目录 ----
+      # 将项目根目录实时映射到容器内 /workspace/umi
+      # 在容器内修改文件 = 在宿主机修改文件（同一个 inode）
+      # . 表示 docker-compose.yml 所在目录的父目录（即项目根目录 umi/）
+      - ..:/workspace/umi
+
+      # ---- X11 UNIX Socket ----
+      # X11 客户端（容器内）通过这个 socket 文件与 X Server（宿主机）通信
+      # 没有这个挂载，RViz/Gazebo 等 GUI 应用无法启动
+      - /tmp/.X11-unix:/tmp/.X11-unix
+
+      # ---- X11 认证 ----
+      # XAUTHORITY 文件存储 X11 的访问认证 token
+      # 没有它，即使 socket 挂载了也无法通过认证，GUI 应用会报 "cannot open display"
+      # 如果宿主机没有这个文件（如 macOS），可注释掉这行并在宿主机运行 xhost +local:
+      - ${HOME}/.Xauthority:/home/${USER_NAME:-dev}/.Xauthority
+
+      # ---- DDS shm ----
+      # /dev/shm 是 POSIX 共享内存，Fast DDS / Cyclone DDS 用它做进程间通信
+      # 默认 Docker 容器的 /dev/shm 只有 64MB，ROS2 大数据（图像 topic）可能不够
+      # 这里让它和宿主机共享：足够大，不用担心溢出
+      - /dev/shm:/dev/shm
+
+      # ---- 可选：硬件设备透传 ----
+      # 连接 xArm6 时取消注释（USB 串口）
+      # - /dev/ttyUSB0:/dev/ttyUSB0
+      # 连接 ZED2 相机时取消注释
+      # - /dev/bus/usb:/dev/bus/usb
+
+      # ---- 可选：SSH 密钥 ----
+      # 如果需要在容器内 git push/pull 私仓，取消这句
+      # - ${HOME}/.ssh:/home/${USER_NAME:-dev}/.ssh:ro
+
+    # =========================================================================
+    # 交互模式
+    # =========================================================================
+    # stdin_open + tty = 交互式终端，Ctrl+C 正常退出，支持彩色输出
+    stdin_open: true
+    tty: true
+
+    # ---- 启动命令 ----
+    # Dockerfile 的 CMD 定义了默认命令（/bin/bash）
+    # docker compose run 可以覆盖它：
+    #   docker compose run --rm umi-dev                  → 进入 bash
+    #   docker compose run --rm umi-dev ros2 topic list  → 执行 ROS2 命令
+    #   docker compose run --rm umi-dev pytest           → 运行测试

@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+*.egg
+.Python
+
+# pytest
+.pytest_cache/
+
+# ROS2 / colcon
+build/
+install/
+log/
+
+# Docker
+.docker/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets / local config
+.env
+*.local
+!docker/.env

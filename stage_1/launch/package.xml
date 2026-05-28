@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>launch</name>
+  <version>0.1.0</version>
+  <description>Launch files for the full UMI teleoperation system</description>
+  <maintainer email="user@example.com">dev</maintainer>
+  <license>MIT</license>
+
+  <!-- 依赖所有需要启动的包 -->
+  <exec_depend>teleop_bridge</exec_depend>
+  <exec_depend>perception</exec_depend>
+  <exec_depend>safety</exec_depend>
+  <exec_depend>recorder</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
