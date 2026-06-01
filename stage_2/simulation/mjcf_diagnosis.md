@@ -1,10 +1,17 @@
 # MJCF 模型精度诊断报告
 
-> 2026-06-01 诊断，基于 `planning/tomorrow_2026-05-30.md` 任务 2 "MJCF 模型精度修复"
+> 2026-06-01 诊断 → 2026-06-01 修复完成
+> 基于 `planning/tomorrow_2026-05-30.md` 任务 2 "MJCF 模型精度修复"
 
-## 问题
+## 状态：✅ 已修复
 
-当前 `stage_2/simulation/xarm6.xml` 的 MuJoCo FK 与手写 FK 输出不一致，仿真数据不可用于训练。
+**修复方案**：方案 B（两层 body 结构），commit `6e02630`。
+- FK 误差：>1m → **0.000000m**
+- 仿真管道测试：PASSED
+
+## 问题（已解决）
+
+~~当前 `stage_2/simulation/xarm6.xml` 的 MuJoCo FK 与手写 FK 输出不一致，仿真数据不可用于训练。~~
 
 ## 数值验证
 
