@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """ROS2 node: subscribes Quest3 wrist poses, runs IK, publishes joint/gripper commands."""
 
+import time
+from collections import deque
+
 import numpy as np
 import rclpy
 from rclpy.node import Node
@@ -16,7 +19,7 @@ from stage_1.teleop_bridge.calibration import HandToRobotTransform
 class HandMapper(Node):
     """Maps Quest3 hand tracking data to robot joint + gripper commands."""
 
-    def __init__(self, **kwargs):
+    def __init__(self, transform=None, **kwargs):
         super().__init__("hand_mapper", **kwargs)
         self.declare_parameter("hand", "right")
         self.declare_parameter("scale", 3.0)
@@ -28,7 +31,10 @@ class HandMapper(Node):
         alpha = self.get_parameter("lowpass_alpha").value
         calib_file = self.get_parameter("calibration_file").value
 
-        if calib_file:
+        if transform is not None:
+            self._transform = transform
+            self.get_logger().info("Using injected transform")
+        elif calib_file:
             self._transform = HandToRobotTransform.from_yaml(calib_file)
             self.get_logger().info(f"Loaded calibration from {calib_file}")
         else:
@@ -36,7 +42,8 @@ class HandMapper(Node):
         self._alpha = alpha
         self._filtered_position = None  # 3-vector, initialised on first message
         self._filtered_orientation = None  # quaternion [w, x, y, z], initialised on first message
-        self._q_current = np.zeros(6)  # last valid joint config for IK seed
+        self._q_current = np.array([0.0, -0.5, 0.0, 1.5, 0.0, 0.0])
+        self._ik_times = deque(maxlen=100)
 
         self._pub_joint_cmd = self.create_publisher(
             JointState, "/teleop/command/joints", 10
@@ -103,18 +110,33 @@ class HandMapper(Node):
         T_target[:3, :3] = R_target
         T_target[:3, 3] = p_robot
 
-        # Solve IK
-        q_sol, success, iters, error = solve_ik(T_target, q_init=self._q_current)
+        t0 = time.perf_counter()
+        q_sol, success, iters, error = solve_ik(T_target, q_init=self._q_current, max_iterations=80)
+        ik_dt = time.perf_counter() - t0
+        self._ik_times.append(ik_dt)
+        if len(self._ik_times) >= 100:
+            arr = np.array(self._ik_times)
+            self.get_logger().info(
+                f"IK timing (n=100): mean={np.mean(arr)*1000:.2f}ms "
+                f"std={np.std(arr)*1000:.2f}ms "
+                f"p50={np.percentile(arr,50)*1000:.2f}ms "
+                f"p95={np.percentile(arr,95)*1000:.2f}ms "
+                f"max={np.max(arr)*1000:.2f}ms"
+            )
+            self._ik_times.clear()
 
         if success:
             self._q_current = q_sol
-
-            cmd = JointState()
-            cmd.header.stamp = self.get_clock().now().to_msg()
-            cmd.name = [f"joint{i}" for i in range(1, 7)]
-            cmd.position = q_sol.tolist()
-            self._pub_joint_cmd.publish(cmd)
         else:
+            self._q_current = q_sol  # use best-effort as seed for next frame
+
+        cmd = JointState()
+        cmd.header.stamp = self.get_clock().now().to_msg()
+        cmd.name = [f"joint{i}" for i in range(1, 7)]
+        cmd.position = q_sol.tolist()
+        self._pub_joint_cmd.publish(cmd)
+
+        if not success:
             self.get_logger().warn(
                 f"IK failed after {iters} iterations (error={error:.4f})",
                 throttle_duration_sec=1.0,

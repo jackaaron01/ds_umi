@@ -27,24 +27,21 @@ class TestMockTeleopPipeline:
         from stage_1.teleop_bridge.hand_mapper import HandMapper
         from stage_1.safety.safety_node import SafetyGuardian
         from stage_1.recorder.recorder_node import RecorderNode
+        from stage_1.teleop_bridge.calibration import HandToRobotTransform
 
         rclpy.init()
 
         output_dir = tempfile.mkdtemp()
 
-        # Create nodes
+        # Create nodes with parameters tuned to keep targets within workspace
         tracker = MockHandTracker()
         tracker.set_parameters([
-            rclpy.parameter.Parameter("amplitude_x", value=0.05),
-            rclpy.parameter.Parameter("amplitude_y", value=0.03),
-            rclpy.parameter.Parameter("amplitude_z", value=0.03),
-            rclpy.parameter.Parameter("offset_z", value=0.5),
+            rclpy.parameter.Parameter("amplitude_x", value=0.03),
+            rclpy.parameter.Parameter("amplitude_y", value=0.02),
+            rclpy.parameter.Parameter("amplitude_z", value=0.02),
+            rclpy.parameter.Parameter("offset_z", value=0.2),
         ])
-        mapper = HandMapper(
-            parameter_overrides=[
-                rclpy.parameter.Parameter("scale", value=1.0),
-            ]
-        )
+        mapper = HandMapper(transform=HandToRobotTransform.mock_transform())
         safety = SafetyGuardian()
         safety.set_parameters([rclpy.parameter.Parameter("robot_mode", value="mock")])
         recorder = RecorderNode()

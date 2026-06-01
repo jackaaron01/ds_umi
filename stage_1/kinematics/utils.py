@@ -129,7 +129,7 @@ def pose_error(T_current: np.ndarray, T_desired: np.ndarray) -> np.ndarray:
     R_des = T_desired[:3, :3]
 
     pos_err = p_des - p_cur
-    R_err = R_cur.T @ R_des
+    R_err = R_des @ R_cur.T
     rot_err = so3_log(R_err)
     return np.concatenate([pos_err, rot_err])
 

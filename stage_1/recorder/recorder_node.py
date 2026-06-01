@@ -80,9 +80,10 @@ class RecorderNode(Node):
         self._recording = False
         self._start_time = None
         self._output_dir = output_dir
+        self._last_written_cmd = None  # for deduplication
 
-        # Writer thread @ 30 Hz
-        self._flush_period = 1.0 / 30.0
+        # Writer thread @ 60 Hz (oversampled to compensate for executor jitter)
+        self._flush_period = 1.0 / 60.0
         self._flush_timer = self.create_timer(self._flush_period, self._flush)
 
         self.get_logger().info(f"Recorder ready (output_dir={output_dir})")
@@ -157,6 +158,7 @@ class RecorderNode(Node):
         )
         self._recording = True
         self._start_time = time.time()
+        self._last_written_cmd = None
         self.get_logger().info(f"Recording started: {filepath}")
         resp.success = True
         resp.message = f"Episode {self._episode_index}"
@@ -187,9 +189,14 @@ class RecorderNode(Node):
             if not step:
                 return
 
-        # Require at least joint commands to write
         if "joint_command/position" not in step:
             return
+
+        # Deduplicate: skip if command unchanged since last write
+        cmd_data = step["joint_command/position"]
+        if self._last_written_cmd is not None and cmd_data == self._last_written_cmd:
+            return
+        self._last_written_cmd = cmd_data
 
         elapsed = time.time() - self._start_time
         step["timestamp"] = elapsed
@@ -198,10 +205,11 @@ class RecorderNode(Node):
     def _finalize_episode(self):
         self._recording = False
         if self._writer is not None:
+            actual_steps = self._writer.step_count
             self._writer.end_episode()
             self._writer.close()
             self.get_logger().info(
-                f"Episode {self._episode_index} saved ({self._writer.step_count} steps)"
+                f"Episode {self._episode_index} saved ({actual_steps} steps)"
             )
             self._writer = None
             self._episode_index += 1

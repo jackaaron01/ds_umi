@@ -42,7 +42,7 @@ def solve_ik(
     q = q_init.copy().astype(np.float64)
     best_q = q.copy()
     best_error = np.inf
-    lam = 0.1  # initial damping
+    lam = 0.01  # initial damping
 
     for iteration in range(max_iterations):
         R_cur, p_cur = end_effector_pose(q, dh_params)
@@ -93,9 +93,7 @@ def solve_ik(
         if accepted:
             continue
 
-        # Increase damping when step failed
         lam = min(lam * 2.0, lambda_max)
-        # Use small step with higher damping in next iteration
-        q = np.clip(q + 0.25 * dq, joint_limits[:, 0], joint_limits[:, 1])
+        q = np.clip(q + 0.1 * dq, joint_limits[:, 0], joint_limits[:, 1])
 
     return best_q, best_error < 1e-2, max_iterations, best_error

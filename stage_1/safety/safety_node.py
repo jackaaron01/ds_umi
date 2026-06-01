@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """ROS2 safety guardian node: validates commands and forwards to the robot."""
 
+import sys
 import numpy as np
 import rclpy
 from rclpy.node import Node
@@ -24,6 +25,7 @@ class SafetyGuardian(Node):
         super().__init__("safety_guardian")
         self.declare_parameter("robot_mode", "mock")
         self.declare_parameter("xarm6_ip", "192.168.1.100")
+        self.declare_parameter("mjcf_path", "")
         self.declare_parameter("velocity_limit", np.pi)          # rad/s
         self.declare_parameter("position_delta_limit", 0.3)      # rad per step
         self.declare_parameter("control_rate", 60.0)
@@ -42,6 +44,12 @@ class SafetyGuardian(Node):
             ip = self.get_parameter("xarm6_ip").value
             self._robot = XArm6Interface(ip=ip)
             self.get_logger().info(f"Safety guardian: xarm6 mode (ip={ip})")
+        elif mode == "mujoco":
+            sys.path.insert(0, "/workspace/umi")
+            from stage_2.simulation.mujoco_interface import MujocoRobotInterface
+            model_path = self.get_parameter("mjcf_path").value
+            self._robot = MujocoRobotInterface(model_path=model_path or None)
+            self.get_logger().info(f"Safety guardian: mujoco mode (model={model_path})")
         else:
             raise ValueError(f"Unknown robot_mode: {mode}")
 
