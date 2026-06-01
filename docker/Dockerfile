@@ -209,7 +209,8 @@ RUN pip install --no-cache-dir --ignore-installed \
 RUN pip install --no-cache-dir \
     lerobot \
     hand-tracking-sdk \
-    xarm-python-sdk
+    xarm-python-sdk \
+    mujoco
 
 # --- 其他开发工具 ---
 # ipython : 增强的 Python 交互式 shell（比 python3 好用得多）

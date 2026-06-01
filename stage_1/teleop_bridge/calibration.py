@@ -72,3 +72,16 @@ class HandToRobotTransform:
     def default_transform():
         """Factory: a reasonable default calibration for mock/testing."""
         return HandToRobotTransform(scale=3.0)
+
+    @staticmethod
+    def mock_transform():
+        """Factory: transform for mock pipeline testing.
+
+        Maps the mock tracker's default wrist position (z=0.2 in Quest3 space)
+        to a comfortably reachable robot workspace position [0.4, 0, 0.3].
+        """
+        return HandToRobotTransform(
+            scale=1.0,
+            rotation=HandToRobotTransform.DEFAULT_ROTATION.copy(),
+            offset=np.array([0.6, 0.0, 0.3]),
+        )

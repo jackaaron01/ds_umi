@@ -123,8 +123,15 @@ def main():
     )
     parser.add_argument("--input", "-i", required=True, help="Input HDF5 file or directory")
     parser.add_argument("--output", "-o", required=True, help="Output LeRobot dataset directory")
-    parser.add_argument("--features", action="store_true", help="Also write features.json")
+    parser.add_argument("--features", action="store_true", help="Write features.json (v2 format)")
+    parser.add_argument("--v3", action="store_true", help="Output LeRobot v3.0 Parquet format")
+    parser.add_argument("--fps", type=int, default=30, help="FPS for v3.0 format")
+    parser.add_argument("--tasks", default=None, help="Path to tasks YAML (v3.0 format only)")
     args = parser.parse_args()
+
+    if args.v3:
+        _convert_v3(args)
+        return
 
     input_path = args.input
     output_dir = args.output
@@ -161,6 +168,38 @@ def main():
         write_features_json(output_dir)
 
     print(f"Converted {len(episodes_meta)} episode(s) to {output_dir}")
+
+
+def _convert_v3(args):
+    """Convert to LeRobot v3.0 Parquet format (uses stage_2 module)."""
+    import sys
+    sys.path.insert(0, "/workspace/umi")
+    from stage_2.lerobot_v3_converter import (
+        convert_directory,
+        write_info_json,
+        write_episodes_metadata,
+        compute_and_write_stats,
+    )
+    import shutil
+    import pandas as pd
+
+    output_dir = args.output
+    if os.path.exists(output_dir):
+        for sub in ("data", "meta"):
+            shutil.rmtree(os.path.join(output_dir, sub), ignore_errors=True)
+
+    print(f"Converting {args.input} → {output_dir} (LeRobot v3.0)")
+    stats = convert_directory(args.input, output_dir, fps=args.fps, task_yaml=args.tasks)
+    write_info_json(output_dir, stats, fps=args.fps)
+    write_episodes_metadata(output_dir, stats.episodes)
+
+    data_dir = os.path.join(output_dir, "data", "chunk-000")
+    all_dfs = [pd.read_parquet(os.path.join(data_dir, f))
+               for f in os.listdir(data_dir) if f.endswith(".parquet")]
+    compute_and_write_stats(output_dir, all_dfs)
+
+    print(f"Converted {stats.total_episodes} episode(s), {stats.total_frames} total frames")
+    print(f"Output: {output_dir}")
 
 
 if __name__ == "__main__":

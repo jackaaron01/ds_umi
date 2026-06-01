@@ -72,8 +72,9 @@ ROS2_PACKAGES=(
 )
 
 for pkg in "${ROS2_PACKAGES[@]}"; do
-    if [ -d "${PROJECT_ROOT}/${pkg}" ] && [ ! -L "${WS_SRC}/${pkg}" ]; then
-        ln -s "${PROJECT_ROOT}/${pkg}" "${WS_SRC}/${pkg}" 2>/dev/null || true
+    pkg_path="${PROJECT_ROOT}/stage_1/${pkg}"
+    if [ -d "${pkg_path}" ] && [ ! -L "${WS_SRC}/${pkg}" ]; then
+        ln -s "${pkg_path}" "${WS_SRC}/${pkg}" 2>/dev/null || true
     fi
 done
 
