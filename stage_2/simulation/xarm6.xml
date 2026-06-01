@@ -1,6 +1,6 @@
-<mujoco model="xarm6_sim">
+<mujoco model="xarm6">
   <compiler angle="radian"/>
-  <option gravity="0 0 -9.81"/>
+  <option gravity="0 0 -9.81" timestep="0.002"/>
   <default>
     <joint limited="true" damping="2"/>
     <position ctrllimited="true" forcerange="-50 50" kp="500"/>
@@ -8,39 +8,51 @@
   <worldbody>
     <body name="base" pos="0 0 0">
       <geom type="cylinder" size="0.08 0.05" pos="0 0 0.133" rgba="0.3 0.3 0.3 1"/>
-        <body name="link1" pos="0.000000 0.000000 0.133000">
-          <geom type="capsule" size="0.050000 0.150000" pos="0.000000 0.000000 0.075000" rgba="0.4 0.4 0.6 1"/>
-          <joint name="joint1" type="hinge" axis="0 0 1" range="-6.2830 6.2830"/>
-          <body name="link2" pos="0.000000 0.000000 0.000000">
-            <geom type="capsule" size="0.040000 0.300000" pos="0.150000 0.000000 0.000000" rgba="0.4 0.4 0.6 1"/>
-            <joint name="joint2" type="hinge" axis="0 0 1" range="-2.2510 2.2510"/>
-            <body name="link3" pos="0.300000 0.000000 0.000000">
-              <geom type="capsule" size="0.035000 0.250000" pos="0.125000 0.000000 0.000000" rgba="0.4 0.4 0.6 1"/>
-              <joint name="joint3" type="hinge" axis="0 0 1" range="-6.2830 6.2830"/>
-              <body name="link4" pos="0.250000 0.000000 -0.040000">
-                <geom type="capsule" size="0.030000 0.200000" pos="0.100000 0.000000 0.000000" rgba="0.4 0.4 0.6 1"/>
-                <joint name="joint4" type="hinge" axis="0 0 1" range="-6.2830 6.2830"/>
-                <body name="link5" pos="0.120000 0.000000 0.000000">
-                  <geom type="capsule" size="0.025000 0.150000" pos="0.075000 0.000000 0.000000" rgba="0.4 0.4 0.6 1"/>
-                  <joint name="joint5" type="hinge" axis="0 0 1" range="-6.2830 6.2830"/>
-                  <body name="link6" pos="0.080000 0.000000 0.000000">
-                    <geom type="capsule" size="0.020000 0.100000" pos="0.050000 0.000000 0.000000" rgba="0.4 0.4 0.6 1"/>
-                    <joint name="joint6" type="hinge" axis="0 0 1" range="-6.2830 6.2830"/>
-                    <site name="ee" pos="0.08 0 0" size="0.01" rgba="1 0 0 1"/>
-                  </body>
-                </body>
-              </body>
+        <body name="j1_rotor" pos="0 0 0">
+          <joint name="joint1" type="hinge" axis="0 0 1" range="-6.2832 6.2832"/>
+          <body name="link1" pos="0.000000 0.000000 0.267000" euler="-0.000000 0.000000 -0.000000">
+            <geom type="cylinder" size="0.06 0.12" rgba="0.4 0.4 0.6 1"/>
+            <body name="j2_rotor" pos="0 0 0">
+              <joint name="joint2" type="hinge" axis="0 0 1" range="-2.2515 2.2515"/>
+              <body name="link2" pos="0.000000 0.000000 0.000000" euler="0.000000 1.570796 -1.570796">
+                <geom type="capsule" size="0.05 0.15" rgba="0.4 0.4 0.6 1"/>
+                <body name="j3_rotor" pos="0 0 0">
+                  <joint name="joint3" type="hinge" axis="0 0 1" range="-6.2832 6.2832"/>
+                  <body name="link3" pos="0.289500 0.000000 0.000000" euler="-0.000000 0.000000 -0.000000">
+                    <geom type="capsule" size="0.04 0.12" rgba="0.4 0.4 0.6 1"/>
+                    <body name="j4_rotor" pos="0 0 0">
+                      <joint name="joint4" type="hinge" axis="0 0 1" range="-6.2832 6.2832"/>
+                      <body name="link4" pos="0.077500 0.000000 0.342500" euler="-1.570796 0.000000 -0.000000">
+                        <geom type="capsule" size="0.035 0.10" rgba="0.4 0.4 0.6 1"/>
+                        <body name="j5_rotor" pos="0 0 0">
+                          <joint name="joint5" type="hinge" axis="0 0 1" range="-6.2832 6.2832"/>
+                          <body name="link5" pos="0.000000 0.000000 0.000000" euler="1.570796 0.000000 -0.000000">
+                            <geom type="capsule" size="0.03 0.08" rgba="0.4 0.4 0.6 1"/>
+                            <body name="j6_rotor" pos="0 0 0">
+                              <joint name="joint6" type="hinge" axis="0 0 1" range="-6.2832 6.2832"/>
+                              <body name="link6" pos="0.000000 0.000000 0.097500" euler="-1.570796 0.000000 -0.000000">
+                                <geom type="capsule" size="0.025 0.06" rgba="0.4 0.4 0.6 1"/>
+                                <site name="ee" pos="0 0 0" size="0.01" rgba="1 0 0 1"/>
             </body>
-          </body>
         </body>
+                </body>
+            </body>
+                    </body>
+                </body>
+                        </body>
+                    </body>
+                            </body>
+                        </body>
+                                </body>
+                            </body>
     </body>
   </worldbody>
   <actuator>
-    <position name="motor1" joint="joint1" ctrlrange="-6.283 6.283" kp="500"/>
-    <position name="motor2" joint="joint2" ctrlrange="-6.283 6.283" kp="500"/>
-    <position name="motor3" joint="joint3" ctrlrange="-6.283 6.283" kp="500"/>
-    <position name="motor4" joint="joint4" ctrlrange="-6.283 6.283" kp="500"/>
-    <position name="motor5" joint="joint5" ctrlrange="-6.283 6.283" kp="500"/>
-    <position name="motor6" joint="joint6" ctrlrange="-6.283 6.283" kp="500"/>
+    <position name="motor1" joint="joint1" ctrlrange="-6.2832 6.2832" kp="500"/>
+    <position name="motor2" joint="joint2" ctrlrange="-2.2515 2.2515" kp="500"/>
+    <position name="motor3" joint="joint3" ctrlrange="-6.2832 6.2832" kp="500"/>
+    <position name="motor4" joint="joint4" ctrlrange="-6.2832 6.2832" kp="500"/>
+    <position name="motor5" joint="joint5" ctrlrange="-6.2832 6.2832" kp="500"/>
+    <position name="motor6" joint="joint6" ctrlrange="-6.2832 6.2832" kp="500"/>
   </actuator>
 </mujoco>
