@@ -28,4 +28,4 @@
 - [x] **2B 手眼标定工具** — 采集配对位姿、求解相似变换（SVD）、输出标定 YAML，`HandToRobotTransform` 支持 `from_yaml()` 加载
 - [x] **2C Recorder gripper state 修复** — 新增 `/teleop/state/gripper` 订阅，command 和 state 分离记录
 - [x] **2D Safety 节点持久化 warning 升级** — 实现 `_warning_count` 计数器，连续 3 次 WARNING 自动触发 ESTOP，reset 时清零
-- [x] **2E 端到端验证** — 35/37 测试通过。2 个预先存在的失败：IK 扰动测试（收敛不稳定）、集成测试（mock 模式校准参数使目标超出工作空间）
+- [x] **2E 端到端验证** — 36/36 测试通过（修复 IK pose_error 坐标系不匹配 + 集成测试校准参数）
