@@ -1,0 +1,111 @@
+# Stage 2 Data Collection Task Definitions
+# =======================================
+# Each task has a unique index, description, category, and objects.
+# During data collection, the operator selects a task and the recorder
+# tags each episode with the task_index.
+#
+# Task categories:
+#   pick_and_place  — grasp object, move to target
+#   peg_insertion   — insert peg/pin into hole
+#   drawer_cabinet  — open/close drawers or cabinets
+#   pouring         — pour contents between containers
+#   pushing         — push/slide object to target
+#   screwing        — screw/unscrew threaded objects
+#   cable_routing   — route cables or flexible objects
+#   deformable      — manipulate cloth, foam, or other deformables
+
+tasks:
+  # ── Pick and Place ────────────────────────────────────────────────────
+  - index: 0
+    name: "pick_place_block"
+    category: "pick_and_place"
+    description: "Pick up the wooden block and place it at the target marker"
+    objects: ["wooden_block", "target_marker"]
+    tolerance_mm: 20
+
+  - index: 1
+    name: "pick_place_cup"
+    category: "pick_and_place"
+    description: "Pick up the cup and place it on the coaster"
+    objects: ["cup", "coaster"]
+    tolerance_mm: 15
+
+  - index: 2
+    name: "pick_place_ball"
+    category: "pick_and_place"
+    description: "Pick up the ball and place it in the bowl"
+    objects: ["ball", "bowl"]
+    tolerance_mm: 30
+
+  # ── Peg Insertion ─────────────────────────────────────────────────────
+  - index: 10
+    name: "peg_in_hole_loose"
+    category: "peg_insertion"
+    description: "Insert the peg into the loose-fit hole (clearance > 2mm)"
+    objects: ["peg_10mm", "hole_12mm"]
+    tolerance_mm: 2
+
+  - index: 11
+    name: "peg_in_hole_tight"
+    category: "peg_insertion"
+    description: "Insert the peg into the tight-fit hole (clearance < 0.5mm)"
+    objects: ["peg_10mm", "hole_10.5mm"]
+    tolerance_mm: 0.5
+
+  # ── Drawer / Cabinet ──────────────────────────────────────────────────
+  - index: 20
+    name: "open_drawer"
+    category: "drawer_cabinet"
+    description: "Grasp the drawer handle and pull to open fully"
+    objects: ["drawer_unit"]
+    tolerance_mm: 30
+
+  - index: 21
+    name: "close_drawer"
+    category: "drawer_cabinet"
+    description: "Push the drawer closed until it latches"
+    objects: ["drawer_unit"]
+    tolerance_mm: 30
+
+  # ── Pouring ───────────────────────────────────────────────────────────
+  - index: 30
+    name: "pour_beans_cup_to_bowl"
+    category: "pouring"
+    description: "Pour coffee beans from the measuring cup into the bowl"
+    objects: ["measuring_cup", "bowl", "coffee_beans"]
+    tolerance_mm: 40
+
+  # ── Pushing ───────────────────────────────────────────────────────────
+  - index: 40
+    name: "push_block_to_target"
+    category: "pushing"
+    description: "Push the sliding block to the marked target zone"
+    objects: ["sliding_block", "target_zone"]
+    tolerance_mm: 15
+
+  # ── Screwing ──────────────────────────────────────────────────────────
+  - index: 50
+    name: "screw_cap_on_bottle"
+    category: "screwing"
+    description: "Pick up the bottle cap and screw it onto the bottle"
+    objects: ["bottle", "bottle_cap"]
+    tolerance_mm: 3
+
+  # ── Cable Routing ─────────────────────────────────────────────────────
+  - index: 60
+    name: "route_cable_through_clips"
+    category: "cable_routing"
+    description: "Route the USB cable through the three cable management clips"
+    objects: ["usb_cable", "cable_clips"]
+    tolerance_mm: 25
+
+  # ── Deformable ────────────────────────────────────────────────────────
+  - index: 70
+    name: "fold_cloth_half"
+    category: "deformable"
+    description: "Fold the square cloth in half along the marked crease"
+    objects: ["square_cloth"]
+    tolerance_mm: 30
+
+# ── Default task (used when no task is specified) ──────────────────────
+default_task_index: 0
