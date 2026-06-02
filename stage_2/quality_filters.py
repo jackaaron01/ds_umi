@@ -52,7 +52,24 @@ class QualityReport:
 
 
 def analyze_episode(h5_path: str) -> QualityReport:
-    """Run all quality checks on a single HDF5 episode file."""
+    """Run all 9 quality checks on a single HDF5 episode file.
+
+    Checks performed (3 categories × 3 checks):
+      1. Completeness: min_steps, timestamp_gaps, effective_fps
+      2. Kinematic:    joint_velocity, joint_delta, velocity_spikes
+      3. Semantic:     gripper_range, joint_limits, no_motion
+
+    Args:
+        h5_path: Path to a UMI HDF5 episode file (e.g., episode_000000.h5).
+
+    Returns:
+        QualityReport with per-check results, overall pass/fail, and metadata.
+
+    Integration with v3.0 converter:
+        >>> report = analyze_episode("episode_000000.h5")
+        >>> if report.passed:
+        ...     convert_directory("recordings/", "dataset_v3/")
+    """
     import h5py
 
     report = QualityReport(filepath=h5_path, num_steps=0, effective_fps=0.0)

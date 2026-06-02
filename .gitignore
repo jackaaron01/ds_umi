@@ -32,6 +32,9 @@ Thumbs.db
 # Claude Code
 .claude/
 
+# Generated data
+data/
+
 # Secrets / local config
 .env
 *.local
