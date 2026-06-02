@@ -65,13 +65,13 @@ services:
     #   sudo systemctl restart docker
     # 安装完成后，取消下面 deploy 块的注释即可启用 GPU
     #
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
     # =========================================================================
     # 环境变量

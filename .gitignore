@@ -39,3 +39,4 @@ data/
 .env
 *.local
 !docker/.env
+outputs/
