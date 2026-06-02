@@ -221,6 +221,12 @@ RUN pip install --no-cache-dir \
     black \
     ruff
 
+# --- 修复 scipy/numpy 兼容性 ---
+# PyTorch 的 --ignore-installed 会将 numpy 升级到 2.x，
+# 而基础镜像中的 python3-scipy 1.8.0 需要 numpy <1.25。
+# 强制安装 scipy>=1.12 以兼容 numpy 2.x。
+RUN pip install --no-cache-dir --force-reinstall --ignore-installed "scipy>=1.12"
+
 # ============================================================================
 # 第 7 层：创建非 root 用户
 # ============================================================================
