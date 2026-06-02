@@ -21,9 +21,9 @@ STATE_ESTOP = "EMERGENCY_STOP"
 class SafetyGuardian(Node):
     """Validates teleop commands and forwards safe ones to the robot."""
 
-    def __init__(self):
+    def __init__(self, robot_mode: str = None):
         super().__init__("safety_guardian")
-        self.declare_parameter("robot_mode", "mock")
+        self.declare_parameter("robot_mode", robot_mode or "mock")
         self.declare_parameter("xarm6_ip", "192.168.1.100")
         self.declare_parameter("mjcf_path", "")
         self.declare_parameter("velocity_limit", np.pi)          # rad/s
