@@ -14,6 +14,7 @@ setup(
             "record_only.launch.py",
             "teleop_mock.launch.py",
             "teleop_real.launch.py",
+            "teleop_sim_keyboard.launch.py",
         ]),
     ],
     install_requires=["setuptools"],
