@@ -7,4 +7,4 @@ export PYTHONPATH=/workspace/umi:/ros2_ws/install/lib/python3.10/site-packages:$
 # Fix Docker X11 MIT-SHM error with GLFW rendering
 export MUJOCO_GL=egl
 echo "Starting MuJoCo viewer..."
-python3 /workspace/umi/stage_2/simulation/viewer_node.py
+python3 /workspace/umi/stage_2/simulation/viewer_node.py --model /workspace/umi/stage_2/simulation/xarm_color/xarm_urdf_color.xml
