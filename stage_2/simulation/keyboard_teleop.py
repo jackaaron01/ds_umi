@@ -85,7 +85,6 @@ class KeyboardTeleop(Node):
                         self._running = False
                         break
                     elif c == "\x1b":  # Escape sequences (arrows)
-                        # Try to read more
                         if select.select([sys.stdin], [], [], 0.01)[0]:
                             c2 = sys.stdin.read(1)
                             if c2 == "[" and select.select([sys.stdin], [], [], 0.01)[0]:
@@ -101,7 +100,7 @@ class KeyboardTeleop(Node):
                     else:
                         self._keys_pressed.add(c)
         finally:
-            termios.tcsetattr(sys.stdin, old_settings[0])
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
             self._running = False
 
     def _process_keys(self):
@@ -203,34 +202,35 @@ class KeyboardTeleop(Node):
 
 
 def _print_status(node):
-    """Print a simple one-line status update."""
+    """Print a simple one-line status update with \\r to stay on same line."""
     p = node._pos
     r = node._rpy
     j = node._robot_joints
     g = node._gripper
     s = node._pos_step
-    rs = node._rot_step
     gs = "CLOSE" if g < 0.5 else "OPEN "
-    print(f"\r  EE: [{p[0]:5.2f} {p[1]:5.2f} {p[2]:5.2f}]m "
-          f" RPY:[{r[0]:5.2f} {r[1]:5.2f} {r[2]:5.2f}] "
-          f" J:[{j[0]:5.2f} {j[1]:5.2f} {j[2]:5.2f} {j[3]:5.2f} {j[4]:5.2f} {j[5]:5.2f}] "
-          f" Grip:{gs} spd:{s*100:.0f}cm  ", end="")
+    # \r returns to start of line; pad with spaces to clear previous content
+    msg = (f"\r  Pos:[{p[0]:6.3f} {p[1]:6.3f} {p[2]:6.3f}]m  "
+           f"RPY:[{r[0]:5.2f} {r[1]:5.2f} {r[2]:5.2f}]  "
+           f"Joints:[{j[0]:5.2f} {j[1]:5.2f} {j[2]:5.2f} {j[3]:5.2f} {j[4]:5.2f} {j[5]:5.2f}]  "
+           f"Grip:{gs}  spd:{s*100:.0f}cm  ")
+    sys.stdout.write(msg.ljust(120))
+    sys.stdout.flush()
 
 
 def main():
+    # Print banner BEFORE raw terminal mode starts (use \\r\\n for safety)
+    sys.stdout.write("\r\n  UMI Simulation Teleop\r\n")
+    sys.stdout.write("  Mov: W/S +/-X  A/D +/-Y  Q/E +/-Z     Speed: +/-\r\n")
+    sys.stdout.write("  Rot: I/K pitch J/L roll  U/O yaw      Reset: R\r\n")
+    sys.stdout.write("  Grip: SPACE=close                     Quit: Ctrl+C\r\n")
+    sys.stdout.write("\r\n")
+    sys.stdout.flush()
+
     rclpy.init()
     node = KeyboardTeleop(rate=30.0)
-
-    print("=" * 80)
-    print("  UMI Simulation Teleop")
-    print("=" * 80)
-    print()
-    print("  Mov: W/S +X/-X   A/D +Y/-Y   Q/E +Z/-Z    +/- speed")
-    print("  Rot: I/K pitch   J/L roll    U/O yaw       R   reset")
-    print("  Grip: SPACE=close                               Ctrl+C=quit")
-    print()
-    print("  Status (updates every second):")
-    print()
+    sys.stdout.write("  Status:\r\n")
+    sys.stdout.flush()
 
     try:
         while node.running and rclpy.ok():
@@ -238,7 +238,6 @@ def main():
             node._display_counter += 1
             if node._display_counter % 30 == 0:  # ~1 Hz
                 _print_status(node)
-                sys.stdout.flush()
     except KeyboardInterrupt:
         pass
     finally:
