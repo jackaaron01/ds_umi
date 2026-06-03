@@ -56,30 +56,62 @@ def interpolate_trajectory(waypoints, steps_per_segment=60):
 
 
 def generate_episode_hdf5(output_dir: str, episode_idx: int, trajectory: np.ndarray,
-                          model, control_rate: float = CONTROL_RATE):
-    """Simulate a joint trajectory in MuJoCo and write to HDF5."""
+                          model, control_rate: float = CONTROL_RATE,
+                          steps_per_target: int = 15):
+    """Simulate a joint trajectory in MuJoCo and write to HDF5.
+
+    Uses realistic control: joint_command stays constant (target position)
+    while joint_state evolves towards it over multiple physics steps.
+    This mirrors real robot behavior where commands are positions and
+    the robot needs time to reach them.
+
+    Args:
+        trajectory: Waypoints to visit (N, 6)
+        steps_per_target: Physics steps to hold each waypoint command constant
+    """
     data = mujoco.MjData(model)
     data.qpos[:6] = trajectory[0].copy()
     mujoco.mj_forward(model, data)
 
-    dt = 1.0 / control_rate
-    n_steps = len(trajectory)
+    n_waypoints = len(trajectory)
+    n_steps = n_waypoints * steps_per_target
 
     joint_cmd = np.zeros((n_steps, 6), dtype=np.float64)
     joint_state_pos = np.zeros((n_steps, 6), dtype=np.float64)
     joint_state_vel = np.zeros((n_steps, 6), dtype=np.float64)
     timestamps = np.zeros(n_steps, dtype=np.float64)
 
-    t0 = time.time()
-    for i in range(n_steps):
-        target = trajectory[i]
-        data.ctrl[:6] = target
-        mujoco.mj_step(model, data)
+    # Use velocity-limited control to simulate realistic dynamics.
+    # MuJoCo's position servo reaches target instantly, but a real robot
+    # takes time. We simulate this by limiting the velocity at each step.
+    max_vel = 1.5  # rad/s — realistic joint velocity limit
 
-        joint_cmd[i] = target
-        joint_state_pos[i] = data.qpos[:6]
-        joint_state_vel[i] = data.qvel[:6]
-        timestamps[i] = time.time() - t0
+    dt = 1.0 / control_rate
+    current_cmd = trajectory[0].copy()
+
+    t0 = time.time()
+    step = 0
+    for w in range(n_waypoints):
+        target = trajectory[w]
+        for _ in range(steps_per_target):
+            # Move current_cmd towards target at limited velocity
+            delta = target - current_cmd
+            max_step = max_vel * dt
+            if np.linalg.norm(delta) > max_step:
+                delta = delta / np.linalg.norm(delta) * max_step
+            current_cmd = current_cmd + delta
+
+            # Apply the command to MuJoCo (position servo tracks it)
+            data.ctrl[:6] = current_cmd
+            mujoco.mj_step(model, data)
+
+            # Record: joint_command = what we COMMANDED (evolving target)
+            #         joint_state = what the robot ACTUALLY is
+            joint_cmd[step] = current_cmd.copy()
+            joint_state_pos[step] = data.qpos[:6]
+            joint_state_vel[step] = data.qvel[:6]
+            timestamps[step] = time.time() - t0
+            step += 1
 
     # Gripper: random open/close pattern
     gripper_cmd = np.zeros(n_steps, dtype=np.float64)
@@ -135,22 +167,27 @@ def main():
         if traj_type == "point_to_point":
             start = random_config(rng)
             end = random_config(rng)
-            # Vary speed via segment length
-            n_steps_per_seg = rng.randint(30, 120)
-            trajectory = interpolate_trajectory([start, end], n_steps_per_seg)
+            # Use interpolation to create smooth waypoints
+            n_waypoints = rng.randint(3, 8)
+            alpha = np.linspace(0, 1, n_waypoints)
+            waypoints = (1 - alpha[:, None]) * start + alpha[:, None] * end
 
         elif traj_type == "multi_waypoint":
             n_waypoints = rng.randint(3, 7)
-            waypoints = [random_config(rng) for _ in range(n_waypoints)]
-            n_steps_per_seg = rng.randint(20, 80)
-            trajectory = interpolate_trajectory(waypoints, n_steps_per_seg)
+            waypoints = np.array([random_config(rng) for _ in range(n_waypoints)])
+
+        elif traj_type == "go_to_target":
+            start = random_config(rng)
+            target = random_config(rng)
+            mid = start + rng.uniform(0.3, 0.7) * (target - start)
+            waypoints = np.array([start, mid, target])
 
         else:  # hold
-            config = random_config(rng)
-            n_hold = rng.randint(30, 90)
-            trajectory = np.tile(config, (n_hold, 1))
+            waypoints = np.array([random_config(rng)])
 
-        h5_path, n_steps = generate_episode_hdf5(args.output, ep, trajectory, model)
+        steps_per_target = rng.randint(10, 30)
+        h5_path, n_steps = generate_episode_hdf5(args.output, ep, waypoints, model,
+                                                  steps_per_target=steps_per_target)
         total_steps += n_steps
 
         if (ep + 1) % 50 == 0:
