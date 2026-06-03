@@ -42,16 +42,24 @@ class KeyboardTeleop(Node):
         self._dt = 1.0 / rate
         self._timer = self.create_timer(self._dt, self._publish)
 
+        # Subscribe to robot state for display
+        from sensor_msgs.msg import JointState
+        self._robot_joints = np.zeros(6)
+        self._joint_sub = self.create_subscription(
+            JointState, "/teleop/state/joints", self._joint_cb, 10
+        )
+
         # Current pose state
-        self._pos = np.array([0.5, 0.0, 0.4], dtype=np.float64)  # x,y,z in robot frame
-        self._rpy = np.array([0.0, 0.0, 0.0], dtype=np.float64)    # roll, pitch, yaw
-        self._gripper = 1.0  # 1.0 = open
+        self._pos = np.array([0.5, 0.0, 0.4], dtype=np.float64)
+        self._rpy = np.array([0.0, 0.0, 0.0], dtype=np.float64)
+        self._gripper = 1.0
 
         # Motion parameters
-        self._pos_step = 0.01  # meters per key press
-        self._rot_step = 0.05  # radians per key press
+        self._pos_step = 0.01
+        self._rot_step = 0.05
         self._gripper_step = 0.05
         self._gripper_target = 1.0
+        self._display_counter = 0
 
         # Keyboard state
         self._keys_pressed = set()
@@ -61,8 +69,9 @@ class KeyboardTeleop(Node):
         self._key_thread = threading.Thread(target=self._keyboard_loop, daemon=True)
         self._key_thread.start()
 
-        self.get_logger().info("Keyboard teleop ready")
-        self.get_logger().info("Controls: WASD=move, QE=up/down, IJKLUO=rotate, Space=grip, Ctrl+C=quit")
+    def _joint_cb(self, msg):
+        if len(msg.position) >= 6:
+            self._robot_joints = np.array(msg.position[:6])
 
     def _keyboard_loop(self):
         """Read raw key presses in a background thread."""
@@ -138,6 +147,14 @@ class KeyboardTeleop(Node):
             self._gripper = 1.0
             self._gripper_target = 1.0
 
+        # Speed control
+        if "+" in self._keys_pressed or "=" in self._keys_pressed:
+            self._pos_step = min(0.10, self._pos_step * 1.5)
+            self._rot_step = min(0.30, self._rot_step * 1.5)
+        if "-" in self._keys_pressed:
+            self._pos_step = max(0.001, self._pos_step / 1.5)
+            self._rot_step = max(0.01, self._rot_step / 1.5)
+
         # Smooth gripper
         self._gripper += np.clip(self._gripper_target - self._gripper,
                                  -self._gripper_step, self._gripper_step)
@@ -185,38 +202,85 @@ class KeyboardTeleop(Node):
         return self._running
 
 
+def _draw_display(node):
+    """Draw live status display using ANSI escape codes."""
+    # Clear screen and move cursor home
+    sys.stdout.write("\033[2J\033[H")
+
+    pos = node._pos
+    rpy = node._rpy
+    joints = node._robot_joints
+    gripper = node._gripper
+    step = node._pos_step
+    rstep = node._rot_step
+
+    # Top bar
+    print("\033[1;37;44m  UMI Simulation Teleop  \033[0m")
+    print()
+
+    # End-effector pose
+    print("  \033[1mEnd-Effector Target\033[0m")
+    print(f"    Position:  X={pos[0]:6.3f}  Y={pos[1]:6.3f}  Z={pos[2]:6.3f}  m")
+    print(f"    Rotation:  R={rpy[0]:6.2f}  P={rpy[1]:6.2f}  Y={rpy[2]:6.2f}  rad")
+    gripper_bar = "█" * int(gripper * 10) + "░" * (10 - int(gripper * 10))
+    print(f"    Gripper:   [{gripper_bar}] {gripper:.1f}  {'OPEN' if gripper > 0.5 else 'CLOSE'}")
+    print()
+
+    # Robot joint state
+    print("  \033[1mRobot Joints (from MuJoCo)\033[0m")
+    jstr = " ".join(f"{j:6.2f}" for j in joints)
+    print(f"    J1-J6: [{jstr}] rad")
+    print()
+
+    # Controls map
+    print("  \033[1mControls\033[0m                      \033[1mRotation\033[0m")
+    print("    ┌───────┬───────┬───────┐    ┌───────┬───────┬───────┐")
+    print("    │       │   E   │       │    │       │   I   │       │")
+    print("    │       │  +Z   │       │    │       │ Pitch+│       │")
+    print("    ├───────┼───────┼───────┤    ├───────┼───────┼───────┤")
+    print("    │   A   │  S/W  │   D   │    │   J   │       │   L   │")
+    print("    │  +Y   │ -X/+X │  -Y   │    │ Roll+ │       │ Roll- │")
+    print("    ├───────┼───────┼───────┤    ├───────┼───────┼───────┤")
+    print("    │       │   Q   │       │    │       │   K   │       │")
+    print("    │       │  -Z   │       │    │       │ Pitch-│       │")
+    print("    └───────┴───────┴───────┘    └───────┴───────┴───────┘")
+    print()
+    print("                                ┌───────┬───────┬───────┐")
+    print("    \033[1mOther\033[0m                        │   U   │       │   O   │")
+    print("    SPACE = hold to grip        │ Yaw+  │       │ Yaw-  │")
+    print("    R     = reset pose          └───────┴───────┴───────┘")
+    print("    +/-   = speed up/down")
+    print(f"    Speed: pos={step*100:.0f}cm  rot={rstep*180/np.pi:.0f}°")
+    print()
+    print("  \033[90mCtrl+C to quit\033[0m")
+
+
 def main():
     rclpy.init()
     node = KeyboardTeleop(rate=30.0)
 
-    print("\n" + "=" * 60)
-    print("  Keyboard Teleop — MuJoCo Simulation")
-    print("=" * 60)
-    print()
-    print("  🎮  Controls:")
-    print("     W/S     move +X/-X (forward/back)")
-    print("     A/D     move +Y/-Y (left/right)")
-    print("     Q/E     move +Z/-Z (up/down)")
-    print("     I/K     pitch  (+/-)")
-    print("     J/L     roll   (+/-)")
-    print("     U/O     yaw    (+/-)")
-    print("     SPACE   close gripper (hold)")
-    print("     R       reset pose")
-    print("     Ctrl+C  quit")
-    print()
-    print("  Make sure the pipeline is also running:")
-    print("    ros2 launch launch teleop_sim.launch.py")
-    print()
+    # Clear screen once
+    sys.stdout.write("\033[2J\033[H")
+    sys.stdout.flush()
 
     try:
         while node.running and rclpy.ok():
-            rclpy.spin_once(node, timeout_sec=0.1)
+            rclpy.spin_once(node, timeout_sec=0.05)
+
+            # Update display at ~10 Hz
+            node._display_counter += 1
+            if node._display_counter % 3 == 0:
+                _draw_display(node)
+                sys.stdout.flush()
+
     except KeyboardInterrupt:
         pass
     finally:
         node.destroy_node()
         rclpy.shutdown()
-        print("\nKeyboard teleop stopped.")
+        sys.stdout.write("\033[2J\033[H")  # Clear on exit
+        sys.stdout.flush()
+        print("Keyboard teleop stopped.")
 
 
 if __name__ == "__main__":
