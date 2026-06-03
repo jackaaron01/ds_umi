@@ -17,8 +17,11 @@
   </asset>
 
   <worldbody>
-    <geom type="mesh" rgba="0.5 1 1 1" mesh="base_link"/>
-    <body name="Link2" pos="-0.02444 0.015911 0.16646" quat="0.707105 0 0 0.707108">
+    <!-- Wrapper body adds base rotation (joint1), missing from URDF conversion -->
+    <body name="base_rotor" pos="0 0 0">
+      <joint name="joint1" axis="0 0 1" range="-6.2832 6.2832"/>
+      <geom type="mesh" rgba="0.5 1 1 1" mesh="base_link"/>
+      <body name="Link2" pos="-0.02444 0.015911 0.16646" quat="0.707105 0 0 0.707108">
       <inertial pos="8.1362e-08 0.0034088 0.086994" quat="0.706299 0.0317698 -0.0315408 0.706497" mass="1.3381" diaginertia="0.003249 0.0030614 0.0013872"/>
       <joint name="joint2" pos="0 0 0" axis="0 0 1" range="-6.2832 6.2832"/>
       <geom type="mesh" rgba="1 0.5 1 1" mesh="Link2"/>
@@ -48,8 +51,10 @@
         </body>
       </body>
     </body>
+    </body>  <!-- close base_rotor -->
   </worldbody>
   <actuator>
+    <position name="motor1" joint="joint1" ctrlrange="-6.2832 6.2832" kp="500"/>
     <position name="motor2" joint="joint2" ctrlrange="-6.2832 6.2832" kp="500"/>
     <position name="motor3" joint="joint3" ctrlrange="-6.2832 6.2832" kp="500"/>
     <position name="motor4" joint="joint4" ctrlrange="-6.2832 6.2832" kp="500"/>
