@@ -202,85 +202,49 @@ class KeyboardTeleop(Node):
         return self._running
 
 
-def _draw_display(node):
-    """Draw live status display using ANSI escape codes."""
-    # Clear screen and move cursor home
-    sys.stdout.write("\033[2J\033[H")
-
-    pos = node._pos
-    rpy = node._rpy
-    joints = node._robot_joints
-    gripper = node._gripper
-    step = node._pos_step
-    rstep = node._rot_step
-
-    # Top bar
-    print("\033[1;37;44m  UMI Simulation Teleop  \033[0m")
-    print()
-
-    # End-effector pose
-    print("  \033[1mEnd-Effector Target\033[0m")
-    print(f"    Position:  X={pos[0]:6.3f}  Y={pos[1]:6.3f}  Z={pos[2]:6.3f}  m")
-    print(f"    Rotation:  R={rpy[0]:6.2f}  P={rpy[1]:6.2f}  Y={rpy[2]:6.2f}  rad")
-    gripper_bar = "█" * int(gripper * 10) + "░" * (10 - int(gripper * 10))
-    print(f"    Gripper:   [{gripper_bar}] {gripper:.1f}  {'OPEN' if gripper > 0.5 else 'CLOSE'}")
-    print()
-
-    # Robot joint state
-    print("  \033[1mRobot Joints (from MuJoCo)\033[0m")
-    jstr = " ".join(f"{j:6.2f}" for j in joints)
-    print(f"    J1-J6: [{jstr}] rad")
-    print()
-
-    # Controls map
-    print("  \033[1mControls\033[0m                      \033[1mRotation\033[0m")
-    print("    ┌───────┬───────┬───────┐    ┌───────┬───────┬───────┐")
-    print("    │       │   E   │       │    │       │   I   │       │")
-    print("    │       │  +Z   │       │    │       │ Pitch+│       │")
-    print("    ├───────┼───────┼───────┤    ├───────┼───────┼───────┤")
-    print("    │   A   │  S/W  │   D   │    │   J   │       │   L   │")
-    print("    │  +Y   │ -X/+X │  -Y   │    │ Roll+ │       │ Roll- │")
-    print("    ├───────┼───────┼───────┤    ├───────┼───────┼───────┤")
-    print("    │       │   Q   │       │    │       │   K   │       │")
-    print("    │       │  -Z   │       │    │       │ Pitch-│       │")
-    print("    └───────┴───────┴───────┘    └───────┴───────┴───────┘")
-    print()
-    print("                                ┌───────┬───────┬───────┐")
-    print("    \033[1mOther\033[0m                        │   U   │       │   O   │")
-    print("    SPACE = hold to grip        │ Yaw+  │       │ Yaw-  │")
-    print("    R     = reset pose          └───────┴───────┴───────┘")
-    print("    +/-   = speed up/down")
-    print(f"    Speed: pos={step*100:.0f}cm  rot={rstep*180/np.pi:.0f}°")
-    print()
-    print("  \033[90mCtrl+C to quit\033[0m")
+def _print_status(node):
+    """Print a simple one-line status update."""
+    p = node._pos
+    r = node._rpy
+    j = node._robot_joints
+    g = node._gripper
+    s = node._pos_step
+    rs = node._rot_step
+    gs = "CLOSE" if g < 0.5 else "OPEN "
+    print(f"\r  EE: [{p[0]:5.2f} {p[1]:5.2f} {p[2]:5.2f}]m "
+          f" RPY:[{r[0]:5.2f} {r[1]:5.2f} {r[2]:5.2f}] "
+          f" J:[{j[0]:5.2f} {j[1]:5.2f} {j[2]:5.2f} {j[3]:5.2f} {j[4]:5.2f} {j[5]:5.2f}] "
+          f" Grip:{gs} spd:{s*100:.0f}cm  ", end="")
 
 
 def main():
     rclpy.init()
     node = KeyboardTeleop(rate=30.0)
 
-    # Clear screen once
-    sys.stdout.write("\033[2J\033[H")
-    sys.stdout.flush()
+    print("=" * 80)
+    print("  UMI Simulation Teleop")
+    print("=" * 80)
+    print()
+    print("  Mov: W/S +X/-X   A/D +Y/-Y   Q/E +Z/-Z    +/- speed")
+    print("  Rot: I/K pitch   J/L roll    U/O yaw       R   reset")
+    print("  Grip: SPACE=close                               Ctrl+C=quit")
+    print()
+    print("  Status (updates every second):")
+    print()
 
     try:
         while node.running and rclpy.ok():
             rclpy.spin_once(node, timeout_sec=0.05)
-
-            # Update display at ~10 Hz
             node._display_counter += 1
-            if node._display_counter % 3 == 0:
-                _draw_display(node)
+            if node._display_counter % 30 == 0:  # ~1 Hz
+                _print_status(node)
                 sys.stdout.flush()
-
     except KeyboardInterrupt:
         pass
     finally:
         node.destroy_node()
         rclpy.shutdown()
-        sys.stdout.write("\033[2J\033[H")  # Clear on exit
-        sys.stdout.flush()
-        print("Keyboard teleop stopped.")
+        print("\nKeyboard teleop stopped.")
 
 
 if __name__ == "__main__":
