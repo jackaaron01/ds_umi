@@ -37,15 +37,47 @@ XARM6_JOINT_LIMITS = np.array([
     [-2.0 * np.pi,  2.0 * np.pi],
 ])
 
-# Link visual geometry: (geom_type, size_args, rgba)
+# Link visual geometry: (geom_type, size_args, pos_offset, rgba)
+# Sizes in meters, roughly matching xArm6 physical dimensions
 LINK_GEOMS = [
-    ("cylinder", "0.08 0.05",  "0.3 0.3 0.3 1"),   # base
-    ("cylinder", "0.06 0.12",  "0.4 0.4 0.6 1"),   # link1
-    ("capsule",  "0.05 0.15",  "0.4 0.4 0.6 1"),   # link2
-    ("capsule",  "0.04 0.12",  "0.4 0.4 0.6 1"),   # link3
-    ("capsule",  "0.035 0.10", "0.4 0.4 0.6 1"),   # link4
-    ("capsule",  "0.03 0.08",  "0.4 0.4 0.6 1"),   # link5
-    ("capsule",  "0.025 0.06", "0.4 0.4 0.6 1"),   # link6
+    # base: wide cylinder at bottom
+    ("cylinder", "0.10 0.08",  "0 0 0.08",  "0.3 0.3 0.35 1"),
+    # link1: tall cylinder (shoulder)
+    ("cylinder", "0.07 0.14",  "0 0 0.13",  "0.25 0.25 0.35 1"),
+    # link2: long capsule (upper arm)
+    ("capsule",  "0.06 0.18",  "0 0 0.0",   "0.25 0.25 0.35 1"),
+    # link3: medium capsule (forearm upper)
+    ("capsule",  "0.05 0.15",  "0 0 0.0",   "0.25 0.25 0.35 1"),
+    # link4: medium capsule (forearm lower)
+    ("capsule",  "0.045 0.12", "0 0 0.0",   "0.25 0.25 0.35 1"),
+    # link5: thin capsule (wrist upper)
+    ("capsule",  "0.035 0.09", "0 0 0.0",   "0.25 0.25 0.35 1"),
+    # link6: thin capsule (wrist/flange)
+    ("capsule",  "0.03 0.07",  "0 0 0.0",   "0.25 0.25 0.35 1"),
+]
+
+# Additional visual elements per link (joint rings, markers)
+EXTRA_GEOMS = [
+    # base: top ring
+    [("cylinder", "0.105 0.01", "0 0 0.155", "0.5 0.5 0.5 1")],
+    # link1: joint ring at bottom + top
+    [("cylinder", "0.08 0.008", "0 0 0.01", "0.6 0.6 0.6 1"),
+     ("cylinder", "0.08 0.008", "0 0 0.25", "0.6 0.6 0.6 1")],
+    # link2: joint ring at bottom + top
+    [("cylinder", "0.065 0.007", "0 0 -0.17", "0.5 0.5 0.5 1"),
+     ("cylinder", "0.065 0.007", "0 0 0.17", "0.5 0.5 0.5 1")],
+    # link3: joint ring at bottom
+    [("cylinder", "0.055 0.006", "0 0 -0.14", "0.5 0.5 0.5 1"),
+     ("cylinder", "0.055 0.006", "0 0 0.14", "0.5 0.5 0.5 1")],
+    # link4: joint ring at bottom
+    [("cylinder", "0.05 0.006", "0 0 -0.11", "0.5 0.5 0.5 1"),
+     ("cylinder", "0.05 0.006", "0 0 0.11", "0.5 0.5 0.5 1")],
+    # link5: joint ring at bottom
+    [("cylinder", "0.04 0.005", "0 0 -0.08", "0.5 0.5 0.5 1"),
+     ("cylinder", "0.04 0.005", "0 0 0.08", "0.5 0.5 0.5 1")],
+    # link6: EE flange
+    [("cylinder", "0.035 0.005", "0 0 -0.06", "0.5 0.5 0.5 1"),
+     ("cylinder", "0.04 0.015", "0 0 0.07", "0.6 0.3 0.3 1")],
 ]
 
 
@@ -87,7 +119,13 @@ def generate_xml():
     lines.append('  <worldbody>')
     # Base body at world origin
     lines.append('    <body name="base" pos="0 0 0">')
-    lines.append('      <geom type="cylinder" size="0.08 0.05" pos="0 0 0.133" rgba="0.3 0.3 0.3 1"/>')
+    gtype, gsize, gpos, grgba = LINK_GEOMS[0]
+    lines.append(f'      <geom type="{gtype}" size="{gsize}" pos="{gpos}" rgba="{grgba}"/>')
+    for etype, esize, epos, ergba in EXTRA_GEOMS[0]:
+        lines.append(
+            f'      <geom type="{etype}" size="{esize}" pos="{epos}" rgba="{ergba}" '
+            f'contype="0" conaffinity="0"/>'
+        )
 
     for i, (a, alpha, d, toff) in enumerate(XARM6_DH):
         joint_name = f"joint{i + 1}"
@@ -100,10 +138,10 @@ def generate_xml():
         link_pos = rot_z(toff) @ p
         link_euler = mat_to_euler_xyz(rot_z(toff) @ rot_x(alpha))
 
-        geom_type, geom_size, geom_rgba = LINK_GEOMS[i + 1]
+        geom_type, geom_size, geom_pos, geom_rgba = LINK_GEOMS[i + 1]
+        extra_geoms = EXTRA_GEOMS[i + 1]
 
         # Indentation: each level adds 2 spaces
-        # Level 0: worldbody, Level 1: base, Level 2: j1_rotor, Level 3: link1, ...
         base_indent = "      "  # 6 spaces (inside worldbody > base)
         r_indent = base_indent + "  " * (2 * i + 1)
         l_indent = r_indent + "  "
@@ -120,10 +158,18 @@ def generate_xml():
             f'pos="{" ".join(f"{v:.6f}" for v in link_pos)}" '
             f'euler="{" ".join(f"{v:.6f}" for v in link_euler)}">'
         )
+        # Main link geometry
         lines.append(
             f'{l_indent}  <geom type="{geom_type}" '
-            f'size="{geom_size}" rgba="{geom_rgba}"/>'
+            f'size="{geom_size}" pos="{geom_pos}" rgba="{geom_rgba}"/>'
         )
+        # Extra visual elements (joint rings, markers)
+        for etype, esize, epos, ergba in extra_geoms:
+            lines.append(
+                f'{l_indent}  <geom type="{etype}" '
+                f'size="{esize}" pos="{epos}" rgba="{ergba}" '
+                f'contype="0" conaffinity="0"/>'
+            )
 
     # EE site at link6 origin
     ee_indent = "      " + "  " * 13
