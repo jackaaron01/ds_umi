@@ -31,6 +31,7 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Float32MultiArray, Header
+from std_srvs.srv import Trigger
 from scipy.spatial.transform import Rotation
 
 
@@ -61,9 +62,16 @@ class KeyboardTeleop(Node):
         self._gripper_target = 1.0
         self._display_counter = 0
 
+        # Recording state
+        self._recording = False
+        self._episode_count = 0
+        self._rec_cli_start = self.create_client(Trigger, "/recorder/start")
+        self._rec_cli_stop = self.create_client(Trigger, "/recorder/stop")
+
         # Keyboard state
         self._keys_pressed = set()
         self._running = True
+        self._tab_pressed = False  # debounce Tab
 
         # Start keyboard thread
         self._key_thread = threading.Thread(target=self._keyboard_loop, daemon=True)
@@ -139,6 +147,12 @@ class KeyboardTeleop(Node):
         else:
             self._gripper_target = 1.0  # open
 
+        # Recording toggle (Tab key)
+        tab_now = "\t" in self._keys_pressed
+        if tab_now and not self._tab_pressed:
+            self._toggle_recording()
+        self._tab_pressed = tab_now
+
         # Reset
         if "r" in self._keys_pressed:
             self._pos = np.array([0.5, 0.0, 0.4])
@@ -160,6 +174,23 @@ class KeyboardTeleop(Node):
 
         # Clear used keys
         self._keys_pressed.clear()
+
+    def _toggle_recording(self):
+        """Toggle recording on/off via ROS2 service."""
+        if self._recording:
+            req = Trigger.Request()
+            future = self._rec_cli_stop.call_async(req)
+            self._recording = False
+            self.get_logger().info(f"Recording STOPPED (episode {self._episode_count})")
+        else:
+            if not self._rec_cli_start.wait_for_service(timeout_sec=1.0):
+                self.get_logger().warn("Recorder service not available")
+                return
+            self._episode_count += 1
+            req = Trigger.Request()
+            future = self._rec_cli_start.call_async(req)
+            self._recording = True
+            self.get_logger().info(f"Recording STARTED (episode {self._episode_count})")
 
     def _publish(self):
         """Publish current pose and keypoints at the timer rate."""
@@ -209,8 +240,9 @@ def _print_status(node):
     g = node._gripper
     s = node._pos_step
     gs = "CLOSE" if g < 0.5 else "OPEN "
+    rec = f"REC#{node._episode_count}" if node._recording else "     "
     # \r returns to start of line; pad with spaces to clear previous content
-    msg = (f"\r  Pos:[{p[0]:6.3f} {p[1]:6.3f} {p[2]:6.3f}]m  "
+    msg = (f"\r  [{rec}] Pos:[{p[0]:6.3f} {p[1]:6.3f} {p[2]:6.3f}]m  "
            f"RPY:[{r[0]:5.2f} {r[1]:5.2f} {r[2]:5.2f}]  "
            f"Joints:[{j[0]:5.2f} {j[1]:5.2f} {j[2]:5.2f} {j[3]:5.2f} {j[4]:5.2f} {j[5]:5.2f}]  "
            f"Grip:{gs}  spd:{s*100:.0f}cm  ")
@@ -223,7 +255,7 @@ def main():
     sys.stdout.write("\r\n  UMI Simulation Teleop\r\n")
     sys.stdout.write("  Mov: W/S +/-X  A/D +/-Y  Q/E +/-Z     Speed: +/-\r\n")
     sys.stdout.write("  Rot: I/K pitch J/L roll  U/O yaw      Reset: R\r\n")
-    sys.stdout.write("  Grip: SPACE=close                     Quit: Ctrl+C\r\n")
+    sys.stdout.write("  Grip: SPACE=close   Rec: TAB          Quit: Ctrl+C\r\n")
     sys.stdout.write("\r\n")
     sys.stdout.flush()
 
