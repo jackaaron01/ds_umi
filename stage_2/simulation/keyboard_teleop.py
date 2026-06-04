@@ -196,7 +196,17 @@ class KeyboardTeleop(Node):
         """Publish current pose and keypoints at the timer rate."""
         if not self._running:
             return
+        # Save old pose to detect changes
+        old_pos = self._pos.copy()
+        old_rpy = self._rpy.copy()
+        old_grip = self._gripper
+
         self._process_keys()
+
+        # Only publish if pose actually changed (keys pressed)
+        if (np.allclose(self._pos, old_pos) and np.allclose(self._rpy, old_rpy)
+                and abs(self._gripper - old_grip) < 0.01):
+            return
 
         t = self.get_clock().now().to_msg()
 
