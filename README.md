@@ -7,8 +7,8 @@
 | 阶段 | 时间 | 内容 | 状态 |
 |------|------|------|------|
 | Stage 1 | 月 1–3 | 硬件集成与遥操作回路 | ✅ 完成（36/36 测试通过） |
-| Stage 2 | 月 3–6 | 数据采集流水线 | 🔄 进行中（仿真环境、质量过滤、格式转换已就绪） |
-| Stage 3 | 月 6–10 | ACT 模型训练 | 🔲 待开始 |
+| Stage 2 | 月 3–6 | 数据采集流水线 | ✅ 完成（仿真遥操作、质量过滤、格式转换已就绪） |
+| Stage 3 | 月 6–10 | 模型训练基线 | 🔄 进行中（ACT + Diffusion Policy 已验证） |
 | Stage 4 | 月 10+ | 部署与泛化 | 🔲 待开始 |
 
 ### 当前性能基线
@@ -18,8 +18,46 @@
 | 端到端延迟 | p50: 8.1ms | <50ms |
 | IK 求解 | 26ms | <33ms (30Hz) |
 | 时间同步 | 687μs | <5ms |
+| ACT 训练 Loss (300 eps, 20K steps) | 0.60→0.15 | 收敛 |
+| DP 训练 Loss (300 eps, 5K steps) | 0.28→0.05 | 收敛 |
 
-## 快速开始
+## 仿真遥操作（键盘控制 + 3D 可视化）
+
+无需硬件，在 MuJoCo 仿真中操控 xArm6 机械臂，支持实时录制。
+
+```bash
+# 启动容器
+make up
+
+# 终端 1：启动控制管道（后台）
+make exec cmd="bash /workspace/umi/sim_start_pipeline.sh &"
+
+# 终端 2：3D 可视化（STL 网格模型，彩色连杆）
+make exec cmd="bash /workspace/umi/sim_viewer.sh"
+
+# 终端 3：键盘操控（终端实时状态显示）
+make exec cmd="bash /workspace/umi/sim_teleop.sh"
+```
+
+键盘控制：W/S 前后、A/D 左右、Q/E 升降、I/K 俯仰、J/L 横滚、U/O 偏航、空格夹爪、R 复位
+
+## 模型训练
+
+```bash
+# 生成多样化训练数据（300 episodes, ~20K frames）
+python3 stage_2/generate_diverse_data.py -n 300 -o data/my_dataset --v3
+
+# ACT 训练
+python3 stage_2/train_act.py --data data/my_dataset_v3 --steps 20000 --batch-size 32
+
+# Diffusion Policy 训练
+python3 stage_2/train_dp.py --data data/my_dataset_v3 --steps 5000 --batch-size 32
+
+# Rollout 评估
+python3 stage_2/evaluate_rollout.py --checkpoint outputs/act_diverse/best.pt --runs 20
+```
+
+## 快速开始（Docker）
 
 ```bash
 # 1. 构建 Docker 镜像（首次 10-15 分钟）
@@ -38,8 +76,8 @@ make shell cmd="bash -c 'cd /ros2_ws && colcon build && \
 ## 架构
 
 ```
-Quest3 手部追踪
-    │ UDP
+键盘 / Quest3 手部追踪
+    │ /hand/right/wrist_pose
     ▼
 teleop_bridge (hand_mapper)     ← IK (手写 DH 参数 + 雅可比伪逆)
     │ /teleop/command/joints
@@ -54,6 +92,9 @@ recorder (HDF5 录制)            ← 同步多模态数据
     │
     ▼
 LeRobot v3.0 (Parquet + JSON)   ← 数据导出
+    │
+    ▼
+ACT / Diffusion Policy          ← 端到端策略训练
 ```
 
 ### 模块
@@ -67,7 +108,7 @@ LeRobot v3.0 (Parquet + JSON)   ← 数据导出
 | `safety` | `stage_1/safety/` | 安全守护节点 |
 | `recorder` | `stage_1/recorder/` | HDF5 录制 + LeRobot 转换 |
 | `launch` | `stage_1/launch/` | 全系统启动文件 |
-| `stage_2` | `stage_2/` | 数据管道工具 + MuJoCo 仿真 |
+| `stage_2` | `stage_2/` | 数据管道 + MuJoCo 仿真 + ACT/DP 训练 |
 
 详细架构见 [`CLAUDE.md`](CLAUDE.md)，阶段一模块文档见 [`stage_1/README.md`](stage_1/README.md)。
 
