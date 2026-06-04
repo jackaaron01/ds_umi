@@ -56,8 +56,8 @@ class KeyboardTeleop(Node):
         self._gripper = 1.0
 
         # Motion parameters
-        self._pos_step = 0.01
-        self._rot_step = 0.05
+        self._pos_step = 0.005  # smaller step = smoother motion
+        self._rot_step = 0.03
         self._gripper_step = 0.05
         self._gripper_target = 1.0
         self._display_counter = 0
@@ -242,11 +242,11 @@ def _print_status(node):
     gs = "CLOSE" if g < 0.5 else "OPEN "
     rec = f"REC#{node._episode_count}" if node._recording else "     "
     # \r returns to start of line; pad with spaces to clear previous content
-    msg = (f"\r  [{rec}] Pos:[{p[0]:6.3f} {p[1]:6.3f} {p[2]:6.3f}]m  "
+    msg = (f"\r\033[K  [{rec}] Pos:[{p[0]:6.3f} {p[1]:6.3f} {p[2]:6.3f}]m  "
            f"RPY:[{r[0]:5.2f} {r[1]:5.2f} {r[2]:5.2f}]  "
-           f"Joints:[{j[0]:5.2f} {j[1]:5.2f} {j[2]:5.2f} {j[3]:5.2f} {j[4]:5.2f} {j[5]:5.2f}]  "
-           f"Grip:{gs}  spd:{s*100:.0f}cm  ")
-    sys.stdout.write(msg.ljust(120))
+           f"J:[{j[0]:5.2f} {j[1]:5.2f} {j[2]:5.2f} {j[3]:5.2f} {j[4]:5.2f} {j[5]:5.2f}]  "
+           f"Grip:{gs}  spd:{s*100:.0f}cm")
+    sys.stdout.write(msg)
     sys.stdout.flush()
 
 
