@@ -9,7 +9,7 @@ pkill -f safety_guardian 2>/dev/null
 pkill -f recorder 2>/dev/null
 sleep 1
 
-/ros2_ws/install/teleop_bridge/bin/hand_mapper --ros-args -p hand:=right -p scale:=1.0 -p lowpass_alpha:=0.7 &
+/ros2_ws/install/teleop_bridge/bin/hand_mapper --ros-args -p hand:=right -p scale:=1.0 -p lowpass_alpha:=0.7 -p calibration_file:=/workspace/umi/stage_2/simulation/identity_calib.yaml &
 /ros2_ws/install/safety/bin/safety_guardian --ros-args -p robot_mode:=mujoco -p mjcf_path:=/workspace/umi/stage_2/simulation/xarm_color/xarm_urdf_color.xml &
 /ros2_ws/install/recorder/bin/recorder --ros-args -p output_dir:=/tmp/sim_teleop_recordings &
 
