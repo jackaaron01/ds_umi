@@ -50,13 +50,19 @@ class KeyboardTeleop(Node):
             JointState, "/teleop/state/joints", self._joint_cb, 10
         )
 
-        # Current pose state
+        # Current pose state — initialized from FK once we get joint state
         self._pos = np.array([0.5, 0.0, 0.4], dtype=np.float64)
         self._rpy = np.array([0.0, 0.0, 0.0], dtype=np.float64)
         self._gripper = 1.0
+        self._initialized = False  # wait for first joint state
+
+        # Workspace bounds (xArm6 approximate, in meters)
+        self._workspace_radius = 0.65  # max horizontal reach
+        self._workspace_z_min = 0.05
+        self._workspace_z_max = 0.70
 
         # Motion parameters
-        self._pos_step = 0.005  # smaller step = smoother motion
+        self._pos_step = 0.005
         self._rot_step = 0.03
         self._gripper_step = 0.05
         self._gripper_target = 1.0
@@ -80,6 +86,22 @@ class KeyboardTeleop(Node):
     def _joint_cb(self, msg):
         if len(msg.position) >= 6:
             self._robot_joints = np.array(msg.position[:6])
+            # On first joint state, compute FK to sync initial wrist pose
+            if not self._initialized:
+                self._sync_pose_from_joints()
+                self._initialized = True
+
+    def _sync_pose_from_joints(self):
+        """Set internal wrist pose to match current robot joint state via FK."""
+        try:
+            from stage_1.kinematics.fk import end_effector_pose
+            from stage_1.kinematics.dh_params import XARM6_DH_PARAMS
+            R, p = end_effector_pose(self._robot_joints, XARM6_DH_PARAMS)
+            self._pos = p.copy()
+            from stage_1.kinematics.utils import rotation_matrix_to_euler
+            self._rpy = rotation_matrix_to_euler(R)
+        except Exception:
+            pass  # keep default
 
     def _keyboard_loop(self):
         """Read raw key presses in a background thread."""
@@ -168,6 +190,12 @@ class KeyboardTeleop(Node):
             self._pos_step = max(0.001, self._pos_step / 1.5)
             self._rot_step = max(0.01, self._rot_step / 1.5)
 
+        # Workspace clamping
+        r = np.linalg.norm(self._pos[:2])
+        if r > self._workspace_radius:
+            self._pos[:2] *= self._workspace_radius / r
+        self._pos[2] = np.clip(self._pos[2], self._workspace_z_min, self._workspace_z_max)
+
         # Smooth gripper
         self._gripper += np.clip(self._gripper_target - self._gripper,
                                  -self._gripper_step, self._gripper_step)
@@ -195,6 +223,9 @@ class KeyboardTeleop(Node):
     def _publish(self):
         """Publish current pose and keypoints at the timer rate."""
         if not self._running:
+            return
+        # Wait for first joint state to sync pose from current robot state
+        if not self._initialized:
             return
         self._process_keys()
 
@@ -241,8 +272,10 @@ def _print_status(node):
     s = node._pos_step
     gs = "CLOSE" if g < 0.5 else "OPEN "
     rec = f"REC#{node._episode_count}" if node._recording else "     "
-    # \r returns to start of line; pad with spaces to clear previous content
-    msg = (f"\r\033[K  [{rec}] Pos:[{p[0]:6.3f} {p[1]:6.3f} {p[2]:6.3f}]m  "
+    init = "SYNC" if not node._initialized else "    "
+    r_xy = np.linalg.norm(p[:2])
+    limit_warn = "!" if r_xy > node._workspace_radius * 0.9 else " "
+    msg = (f"\r\033[K [{rec}{init}] [{limit_warn}] Pos:[{p[0]:6.3f} {p[1]:6.3f} {p[2]:6.3f}]m r={r_xy:.2f}  "
            f"RPY:[{r[0]:5.2f} {r[1]:5.2f} {r[2]:5.2f}]  "
            f"J:[{j[0]:5.2f} {j[1]:5.2f} {j[2]:5.2f} {j[3]:5.2f} {j[4]:5.2f} {j[5]:5.2f}]  "
            f"Grip:{gs}  spd:{s*100:.0f}cm")
