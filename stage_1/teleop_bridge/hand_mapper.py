@@ -44,6 +44,7 @@ class HandMapper(Node):
         self._filtered_orientation = None  # quaternion [w, x, y, z], initialised on first message
         self._q_current = np.array([0.0, -0.5, 0.0, 1.5, 0.0, 0.0])
         self._ik_times = deque(maxlen=100)
+        self._T_last = None  # cache last IK target to skip redundant solves
 
         self._pub_joint_cmd = self.create_publisher(
             JointState, "/teleop/command/joints", 10
@@ -109,6 +110,14 @@ class HandMapper(Node):
         T_target = np.eye(4)
         T_target[:3, :3] = R_target
         T_target[:3, 3] = p_robot
+
+        # Skip IK if target pose hasn't changed significantly (prevents oscillation)
+        from stage_1.kinematics.utils import pose_error
+        if self._T_last is not None:
+            err = pose_error(self._T_last, T_target)
+            if np.linalg.norm(err) < 0.005:  # <5mm+0.005rad — skip redundant IK
+                return  # reuse last joint command, no re-publish needed
+        self._T_last = T_target.copy()
 
         t0 = time.perf_counter()
         q_sol, success, iters, error = solve_ik(T_target, q_init=self._q_current, max_iterations=80)
