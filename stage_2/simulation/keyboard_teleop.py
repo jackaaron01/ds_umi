@@ -200,13 +200,18 @@ class KeyboardTeleop(Node):
 
         t = self.get_clock().now().to_msg()
 
-        # PoseStamped
+        # PoseStamped — apply inverse calibration to publish in Quest3 frame
+        # HandToRobotTransform will rotate back to robot frame in hand_mapper
+        # R_inv = R_default^T maps robot→Quest3 (since robot_pos = R @ quest_pos)
+        R_inv = np.array([[0, -1, 0], [0, 0, 1], [-1, 0, 0]], dtype=np.float64)
+        quest_pos = R_inv @ self._pos
+
         quat = Rotation.from_euler("xyz", self._rpy).as_quat()  # [x,y,z,w]
         pose_msg = PoseStamped()
         pose_msg.header = Header(stamp=t, frame_id="world")
-        pose_msg.pose.position.x = float(self._pos[0])
-        pose_msg.pose.position.y = float(self._pos[1])
-        pose_msg.pose.position.z = float(self._pos[2])
+        pose_msg.pose.position.x = float(quest_pos[0])
+        pose_msg.pose.position.y = float(quest_pos[1])
+        pose_msg.pose.position.z = float(quest_pos[2])
         pose_msg.pose.orientation.x = float(quat[0])
         pose_msg.pose.orientation.y = float(quat[1])
         pose_msg.pose.orientation.z = float(quat[2])
