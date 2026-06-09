@@ -25,6 +25,9 @@ log/
 *.swo
 *~
 
+# Shell artifacts
+=*
+
 # OS
 .DS_Store
 Thumbs.db
