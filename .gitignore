@@ -40,3 +40,4 @@ data/
 *.local
 !docker/.env
 outputs/
+!outputs/model_registry.json
