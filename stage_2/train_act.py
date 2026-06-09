@@ -58,7 +58,7 @@ class UMILeRobotDataset(Dataset):
         n_valid = end - frame_idx
         if n_valid > 0:
             action[:n_valid] = act_arr[frame_idx:end]
-        if img_feat_arr is not None:
+        if self._has_image_features and img_feat_arr is not None:
             img_feat = torch.from_numpy(img_feat_arr[frame_idx])
             return obs, img_feat, torch.from_numpy(action)
         return obs, torch.from_numpy(action)
@@ -74,6 +74,8 @@ def main():
     parser.add_argument("--chunk-size", type=int, default=100)
     parser.add_argument("--dim-model", type=int, default=256)
     parser.add_argument("--save-every", type=int, default=2000)
+    parser.add_argument("--no-visual", action="store_true",
+                        help="Ignore image_features even if present in data")
     args = parser.parse_args()
 
     os.makedirs(args.output, exist_ok=True)
@@ -85,6 +87,9 @@ def main():
 
     # Dataset (load first to detect image features)
     dataset = UMILeRobotDataset(args.data, chunk_size=args.chunk_size)
+    if args.no_visual and dataset._has_image_features:
+        print("Visual features present but disabled via --no-visual")
+        dataset._has_image_features = False
     has_image_features = dataset._has_image_features
 
     # Config

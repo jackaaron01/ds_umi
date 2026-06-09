@@ -77,7 +77,7 @@ class UMIDPDataset(Dataset):
             torch.from_numpy(env_state),
             torch.from_numpy(action),
         ]
-        if img_feat_arr is not None:
+        if self._has_image_features and img_feat_arr is not None:
             # Image features: (n_obs_steps, 128)
             img_feat_seq = np.zeros((self.n_obs_steps, img_feat_arr.shape[1]), dtype=np.float32)
             for t in range(self.n_obs_steps):

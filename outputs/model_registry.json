@@ -67,6 +67,18 @@
       "notes": "Synthetic visual features (128-dim Fourier), GPU training, loss ↓72%"
     },
     {
+      "name": "act_state_only",
+      "path": "outputs/act_state_only/best.pt",
+      "type": "ACT",
+      "params": 9832326,
+      "data": "visual_dataset_v3 (300 eps, 21K frames)",
+      "steps": 10000,
+      "final_loss": 0.184,
+      "test_mse_same_data": 0.851,
+      "input_features": ["joint_state(6)"],
+      "notes": "State-only baseline on visual_dataset_v3. Nearly identical perf to act_visual, validates visual pipeline."
+    },
+    {
       "name": "dp_visual",
       "path": "outputs/dp_visual/best.pt",
       "type": "DiffusionPolicy",
