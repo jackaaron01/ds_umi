@@ -12,7 +12,7 @@ from sensor_msgs.msg import JointState
 from std_msgs.msg import Float64, Float32MultiArray
 
 from stage_1.kinematics.ik import solve_ik
-from stage_1.kinematics.utils import pose_to_transform
+from stage_1.kinematics.utils import pose_error, pose_to_transform
 from stage_1.teleop_bridge.calibration import HandToRobotTransform
 
 
@@ -112,7 +112,6 @@ class HandMapper(Node):
         T_target[:3, 3] = p_robot
 
         # Skip IK if target pose hasn't changed significantly (prevents oscillation)
-        from stage_1.kinematics.utils import pose_error
         if self._T_last is not None:
             err = pose_error(self._T_last, T_target)
             if np.linalg.norm(err) < 0.005:  # <5mm+0.005rad — skip redundant IK
