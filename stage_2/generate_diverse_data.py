@@ -57,7 +57,8 @@ def interpolate_trajectory(waypoints, steps_per_segment=60):
 
 def generate_episode_hdf5(output_dir: str, episode_idx: int, trajectory: np.ndarray,
                           model, control_rate: float = CONTROL_RATE,
-                          steps_per_target: int = 15):
+                          steps_per_target: int = 15, render: bool = False,
+                          img_size: int = 64):
     """Simulate a joint trajectory in MuJoCo and write to HDF5.
 
     Uses realistic control: joint_command stays constant (target position)
@@ -75,11 +76,17 @@ def generate_episode_hdf5(output_dir: str, episode_idx: int, trajectory: np.ndar
 
     n_waypoints = len(trajectory)
 
+    # Renderer for offscreen image capture
+    renderer = None
+    if render:
+        renderer = mujoco.Renderer(model, img_size, img_size)
+
     # Use lists for dynamic sizing (pauses add variable steps)
     joint_cmd_list = []
     joint_state_pos_list = []
     joint_state_vel_list = []
     timestamps_list = []
+    image_list = [] if render else None
 
     # Use velocity-limited control to simulate realistic dynamics.
     # MuJoCo's position servo reaches target instantly, but a real robot
@@ -124,12 +131,22 @@ def generate_episode_hdf5(output_dir: str, episode_idx: int, trajectory: np.ndar
             joint_state_vel_list.append(data.qvel[:6])
             timestamps_list.append(time.time() - t0)
 
+            # Render offscreen image
+            if renderer is not None:
+                renderer.update_scene(data, camera="fixed")
+                image_list.append(renderer.render().copy())
+
     # Convert lists to arrays
     joint_cmd = np.array(joint_cmd_list, dtype=np.float64)
     joint_state_pos = np.array(joint_state_pos_list, dtype=np.float64)
     joint_state_vel = np.array(joint_state_vel_list, dtype=np.float64)
     timestamps = np.array(timestamps_list, dtype=np.float64)
     n_steps = len(joint_cmd)
+
+    # Convert image list to array
+    has_images = image_list is not None and len(image_list) > 0
+    if has_images:
+        images = np.stack(image_list, axis=0)  # (N, H, W, 3)
 
     # Gripper: random open/close pattern
     gripper_cmd = np.ones(n_steps, dtype=np.float64)
@@ -149,9 +166,15 @@ def generate_episode_hdf5(output_dir: str, episode_idx: int, trajectory: np.ndar
         ep.create_dataset("joint_state/position_timestamp", data=timestamps, compression="gzip")
         ep.create_dataset("gripper/command", data=gripper_cmd, compression="gzip")
         ep.create_dataset("gripper/state", data=gripper_state, compression="gzip")
+        if has_images:
+            ep.create_dataset("sensors/camera/rgb", data=images, compression="gzip",
+                              chunks=(1, img_size, img_size, 3))
         ep.attrs["num_steps"] = n_steps
 
-    return h5_path, n_steps
+    if renderer is not None:
+        renderer.close()
+
+    return h5_path, n_steps, has_images
 
 
 def main():
@@ -160,6 +183,7 @@ def main():
     parser.add_argument("-o", "--output", default="/workspace/umi/data/diverse_dataset")
     parser.add_argument("--model", default=None)
     parser.add_argument("--v3", action="store_true", help="Convert to LeRobot v3.0 after generation")
+    parser.add_argument("--render", action="store_true", help="Render camera images")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
@@ -167,7 +191,7 @@ def main():
     os.makedirs(args.output, exist_ok=True)
 
     model_path = args.model or os.path.join(
-        os.path.dirname(__file__), "simulation", "xarm6.xml"
+        os.path.dirname(__file__), "simulation", "xarm_color", "xarm_urdf_color.xml"
     )
     model = mujoco.MjModel.from_xml_path(model_path)
     print(f"Model: {model.nbody} bodies, {model.nq} joints")
@@ -201,8 +225,9 @@ def main():
             waypoints = np.array([random_config(rng)])
 
         steps_per_target = rng.randint(10, 30)
-        h5_path, n_steps = generate_episode_hdf5(args.output, ep, waypoints, model,
-                                                  steps_per_target=steps_per_target)
+        h5_path, n_steps, has_img = generate_episode_hdf5(
+            args.output, ep, waypoints, model,
+            steps_per_target=steps_per_target, render=args.render)
         total_steps += n_steps
 
         if (ep + 1) % 50 == 0:

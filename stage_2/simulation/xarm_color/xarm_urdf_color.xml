@@ -17,6 +17,7 @@
   </asset>
 
   <worldbody>
+    <camera name="fixed" pos="1.2 0 1.0" xyaxes="-1 0 0 0 -0.5 1"/>  <!-- overlook view -->
     <!-- Wrapper body adds base rotation (joint1), missing from URDF conversion -->
     <body name="base_rotor" pos="0 0 0">
       <joint name="joint1" axis="0 0 1" range="-6.2832 6.2832"/>
