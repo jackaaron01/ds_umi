@@ -27,26 +27,32 @@ class UMIDPDataset(Dataset):
                     dfs.append(pd.read_parquet(os.path.join(root, f)))
         self.df = pd.concat(dfs, ignore_index=True)
 
+        # Check if image_features column exists
+        self._has_image_features = "observation.image_features" in self.df.columns
+
         self.episodes = []
         self.samples = []
         for ep_idx, group in self.df.groupby("episode_index"):
             obs = np.vstack(group["observation.joint_position"].values).astype(np.float32)
             act = np.vstack(group["action.joint_position"].values).astype(np.float32)
+            img_feat = None
+            if self._has_image_features:
+                img_feat = np.vstack(group["observation.image_features"].values).astype(np.float32)
             ep_len = len(act)
             list_idx = len(self.episodes)
-            self.episodes.append((obs, act))
-            # Need n_obs_steps history + horizon future actions
+            self.episodes.append((obs, act, img_feat))
             for f in range(max(n_obs_steps, ep_len - horizon)):
                 self.samples.append((list_idx, f))
 
-        print(f"DP Dataset: {len(self.episodes)} eps, {len(self.samples)} samples")
+        feat_str = " w/ image_features" if self._has_image_features else ""
+        print(f"DP Dataset: {len(self.episodes)} eps, {len(self.samples)} samples{feat_str}")
 
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, idx):
         ep_idx, frame_idx = self.samples[idx]
-        obs_arr, act_arr = self.episodes[ep_idx]
+        obs_arr, act_arr, img_feat_arr = self.episodes[ep_idx]
 
         # Observation history: (n_obs_steps, 6)
         obs_seq = np.zeros((self.n_obs_steps, 6), dtype=np.float32)
@@ -55,7 +61,7 @@ class UMIDPDataset(Dataset):
             if src < len(obs_arr):
                 obs_seq[t] = obs_arr[src]
 
-        # Environment state: repeat current frame for n_obs_steps (DP needs same time dim)
+        # Environment state: repeat current frame for n_obs_steps
         current_obs = obs_arr[min(frame_idx, len(obs_arr) - 1)]
         env_state = np.tile(current_obs, (self.n_obs_steps, 1))
 
@@ -66,11 +72,21 @@ class UMIDPDataset(Dataset):
         if n_valid > 0:
             action[:n_valid] = act_arr[frame_idx:end]
 
-        return (
+        result = [
             torch.from_numpy(obs_seq),
             torch.from_numpy(env_state),
             torch.from_numpy(action),
-        )
+        ]
+        if img_feat_arr is not None:
+            # Image features: (n_obs_steps, 128)
+            img_feat_seq = np.zeros((self.n_obs_steps, img_feat_arr.shape[1]), dtype=np.float32)
+            for t in range(self.n_obs_steps):
+                src = max(0, frame_idx - self.n_obs_steps + 1 + t)
+                if src < len(img_feat_arr):
+                    img_feat_seq[t] = img_feat_arr[src]
+            result.append(torch.from_numpy(img_feat_seq))
+
+        return tuple(result)
 
 
 def main():
@@ -87,14 +103,24 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
+    # Dataset (load first to detect image features)
+    dataset = UMIDPDataset(args.data, n_obs_steps=2, horizon=16)
+    has_image_features = dataset._has_image_features
+
+    input_features = {
+        "observation.environment_state": PolicyFeature(shape=[6], type=FeatureType.ENV),
+        "observation.state": PolicyFeature(shape=[6], type=FeatureType.STATE),
+    }
+    if has_image_features:
+        input_features["observation.image_features"] = PolicyFeature(
+            shape=[128], type=FeatureType.ENV
+        )
+
     cfg = DiffusionConfig(
         n_obs_steps=2,
         horizon=16,
         n_action_steps=8,
-        input_features={
-            "observation.environment_state": PolicyFeature(shape=[6], type=FeatureType.ENV),
-            "observation.state": PolicyFeature(shape=[6], type=FeatureType.STATE),
-        },
+        input_features=input_features,
         output_features={"action": PolicyFeature(shape=[6], type=FeatureType.ACTION)},
         down_dims=(256, 512, 1024),
         kernel_size=5, n_groups=8,
@@ -102,7 +128,6 @@ def main():
         num_train_timesteps=100, num_inference_steps=10,
     )
 
-    dataset = UMIDPDataset(args.data, n_obs_steps=cfg.n_obs_steps, horizon=cfg.horizon)
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True,
                         num_workers=2 if device.type == "cuda" else 0,
                         pin_memory=(device.type == "cuda"))
@@ -123,23 +148,30 @@ def main():
     print(f"\nTraining {args.steps} steps, batch={args.batch_size}...")
     for step in range(args.steps):
         try:
-            obs_seq, env_state, action = next(data_iter)
+            batch_data = next(data_iter)
         except StopIteration:
             data_iter = iter(loader)
-            obs_seq, env_state, action = next(data_iter)
+            batch_data = next(data_iter)
+
+        if has_image_features:
+            obs_seq, env_state, action, img_feat_seq = batch_data
+            img_feat_seq = img_feat_seq.to(device)
+        else:
+            obs_seq, env_state, action = batch_data
 
         obs_seq = obs_seq.to(device)
         env_state = env_state.to(device)
         action = action.to(device)
 
         optimizer.zero_grad()
-        # DP batch: observation.state (B,T,dim) + observation.environment_state (B,T,dim)
         batch = {
             "observation.state": obs_seq,
             "observation.environment_state": env_state,
             "action": action,
             "action_is_pad": torch.zeros(action.size(0), cfg.horizon, dtype=torch.bool, device=device),
         }
+        if has_image_features:
+            batch["observation.image_features"] = img_feat_seq
         loss, info = model.forward(batch)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)

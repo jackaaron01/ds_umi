@@ -54,6 +54,28 @@
       "final_loss": 0.039,
       "test_mse_human": 0.052,
       "notes": "Best loss, 6.4x params, denoising loss not comparable to MSE"
+    },
+    {
+      "name": "act_visual",
+      "path": "outputs/act_visual/best.pt",
+      "type": "ACT",
+      "params": 9832326,
+      "data": "visual_dataset_v3 (300 eps, 21K frames)",
+      "steps": 10000,
+      "final_loss": 0.184,
+      "input_features": ["joint_state(6)", "image_features(128)"],
+      "notes": "Synthetic visual features (128-dim Fourier), GPU training, loss ↓72%"
+    },
+    {
+      "name": "dp_visual",
+      "path": "outputs/dp_visual/best.pt",
+      "type": "DiffusionPolicy",
+      "params": 63332230,
+      "data": "visual_dataset_v3 (300 eps, 21K frames)",
+      "steps": 5000,
+      "final_loss": 0.053,
+      "input_features": ["joint_state(6)", "image_features(128)"],
+      "notes": "Synthetic visual features (128-dim Fourier), GPU training, loss ↓78%"
     }
   ]
 }

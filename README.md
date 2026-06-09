@@ -18,11 +18,12 @@
 | 端到端延迟 | p50: 8.1ms | <50ms |
 | IK 求解 | mean: 26ms, p99: 32ms | <33ms (30Hz) |
 | 时间同步 | 687μs | <5ms |
-| ACT 训练 Loss（300 eps, 20K steps） | 0.60→0.15 | 收敛 |
-| DP 训练 Loss（300 eps, 10K steps） | 0.28→0.04 | 收敛 |
+| ACT 训练 Loss（state-only, 20K steps） | 0.60→0.15 | 收敛 |
+| ACT 训练 Loss（state+visual, 10K steps） | 0.65→0.18 | 收敛 |
+| DP 训练 Loss（state+visual, 5K steps） | 0.24→0.05 | 收敛 |
 | FK 精度（MuJoCo vs 手写） | 0.000mm | — |
 
-### 已注册模型（5 个）
+### 已注册模型（7 个）
 
 | 模型 | 类型 | 参数 | 数据 | Loss | Test MSE |
 |------|------|------|------|------|----------|
@@ -31,6 +32,10 @@
 | act_teleop | ACT | 9.8M | 11 eps 人类遥操作 | 0.124 | 1.65 |
 | act_mixed | ACT | 9.8M | 300 合成 + 11 人类 | 0.199 | 1.77 |
 | dp_diverse_10k | Diffusion | 63.3M | 300 eps 合成数据 | 0.039 | 0.052 |
+| **act_visual** | **ACT** | **9.8M** | **300 eps 合成（128-dim 视觉特征）** | **0.184** | — |
+| **dp_visual** | **Diffusion** | **63.3M** | **300 eps 合成（128-dim 视觉特征）** | **0.053** | — |
+
+> **视觉特征说明**：使用随机傅里叶特征（`SyntheticFeatureGenerator`）从关节状态生成 128 维合成视觉特征，模拟冻结的视觉编码器输出。这允许在无法进行 GPU 离线渲染的环境中构建端到端 image→action 训练管道。当真实相机渲染可用时，可无缝替换为真实图像特征。
 
 查看模型：`python3 stage_2/umi_pipeline.py models`
 模型对比：`python3 stage_2/umi_pipeline.py compare`

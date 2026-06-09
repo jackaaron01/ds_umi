@@ -26,31 +26,41 @@ class UMILeRobotDataset(Dataset):
                     dfs.append(pd.read_parquet(os.path.join(root, f)))
         self.df = pd.concat(dfs, ignore_index=True)
 
+        # Check if image_features column exists
+        self._has_image_features = "observation.image_features" in self.df.columns
+
         self.episodes = []
         self.samples = []
         for ep_idx, group in self.df.groupby("episode_index"):
             obs = np.vstack(group["observation.joint_position"].values).astype(np.float32)
             act = np.vstack(group["action.joint_position"].values).astype(np.float32)
+            img_feat = None
+            if self._has_image_features:
+                img_feat = np.vstack(group["observation.image_features"].values).astype(np.float32)
             ep_len = len(act)
             list_idx = len(self.episodes)
-            self.episodes.append((obs, act))
+            self.episodes.append((obs, act, img_feat))
             for f in range(max(1, ep_len - chunk_size)):
                 self.samples.append((list_idx, f))
 
-        print(f"Dataset: {len(self.episodes)} eps, {len(self.samples)} samples")
+        feat_str = " w/ image_features" if self._has_image_features else ""
+        print(f"Dataset: {len(self.episodes)} eps, {len(self.samples)} samples{feat_str}")
 
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, idx):
         ep_idx, frame_idx = self.samples[idx]
-        obs_arr, act_arr = self.episodes[ep_idx]
+        obs_arr, act_arr, img_feat_arr = self.episodes[ep_idx]
         obs = torch.from_numpy(obs_arr[frame_idx])
         end = min(frame_idx + self.chunk_size, len(act_arr))
         action = np.zeros((self.chunk_size, 6), dtype=np.float32)
         n_valid = end - frame_idx
         if n_valid > 0:
             action[:n_valid] = act_arr[frame_idx:end]
+        if img_feat_arr is not None:
+            img_feat = torch.from_numpy(img_feat_arr[frame_idx])
+            return obs, img_feat, torch.from_numpy(action)
         return obs, torch.from_numpy(action)
 
 
@@ -73,12 +83,24 @@ def main():
         print(f"GPU: {torch.cuda.get_device_name(0)}")
         print(f"Memory: {torch.cuda.get_device_properties(0).total_memory/1024**3:.1f} GB")
 
+    # Dataset (load first to detect image features)
+    dataset = UMILeRobotDataset(args.data, chunk_size=args.chunk_size)
+    has_image_features = dataset._has_image_features
+
     # Config
+    input_features = {
+        "observation.environment_state": PolicyFeature(shape=[6], type=FeatureType.ENV),
+    }
+    if has_image_features:
+        input_features["observation.image_features"] = PolicyFeature(
+            shape=[128], type=FeatureType.ENV
+        )
+
     cfg = ACTConfig(
         chunk_size=args.chunk_size,
         n_action_steps=args.chunk_size,
         n_obs_steps=1,
-        input_features={"observation.environment_state": PolicyFeature(shape=[6], type=FeatureType.ENV)},
+        input_features=input_features,
         output_features={"action": PolicyFeature(shape=[6], type=FeatureType.ACTION)},
         dim_model=args.dim_model,
         n_heads=8,
@@ -89,8 +111,6 @@ def main():
         use_vae=False,
     )
 
-    # Dataset
-    dataset = UMILeRobotDataset(args.data, chunk_size=args.chunk_size)
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True,
                         num_workers=2 if device.type == "cuda" else 0,
                         pin_memory=(device.type == "cuda"))
@@ -113,10 +133,16 @@ def main():
     print(f"\nTraining {args.steps} steps, batch={args.batch_size}...")
     for step in range(args.steps):
         try:
-            obs, action = next(data_iter)
+            batch_data = next(data_iter)
         except StopIteration:
             data_iter = iter(loader)
-            obs, action = next(data_iter)
+            batch_data = next(data_iter)
+
+        if has_image_features:
+            obs, img_feat, action = batch_data
+            img_feat = img_feat.to(device)
+        else:
+            obs, action = batch_data
 
         obs = obs.to(device)
         action = action.to(device)
@@ -128,6 +154,8 @@ def main():
             "action": action,
             "action_is_pad": torch.zeros(obs.size(0), args.chunk_size, dtype=torch.bool, device=device),
         }
+        if has_image_features:
+            batch["observation.image_features"] = img_feat
         loss, info = model.forward(batch)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)

@@ -27,6 +27,47 @@ from stage_1.kinematics.dh_params import XARM6_JOINT_LIMITS
 # ── Configuration ──────────────────────────────────────────────────────────
 CONTROL_RATE = 30  # Hz
 JOINT_LIMITS = np.array(XARM6_JOINT_LIMITS)  # (6, 2)
+IMAGE_FEATURE_DIM = 128  # synthetic visual feature dimension
+
+
+class SyntheticFeatureGenerator:
+    """Generate deterministic synthetic visual features from joint positions.
+
+    Uses random Fourier features (sinusoidal projections) to simulate
+    what a frozen visual encoder would output. Fixed seed for reproducibility.
+
+    This allows building the image→action training pipeline without needing
+    real camera images or working GPU offscreen rendering.
+    """
+
+    def __init__(self, input_dim: int = 6, output_dim: int = IMAGE_FEATURE_DIM,
+                 seed: int = 42):
+        rng = np.random.RandomState(seed)
+        # Random projection matrix: (output_dim, input_dim)
+        self._W = rng.randn(output_dim, input_dim) * np.sqrt(2.0 / input_dim)
+        # Random bias
+        self._b = rng.randn(output_dim) * 2.0 * np.pi
+        # Output scaling (learnable-equivalent post-projection)
+        self._scale = rng.randn(output_dim) * 0.1 + 0.5
+
+    def encode(self, joint_positions: np.ndarray) -> np.ndarray:
+        """Encode joint positions to synthetic visual features.
+
+        Args:
+            joint_positions: (6,) or (N, 6) joint positions in radians
+
+        Returns:
+            features: (output_dim,) or (N, output_dim) float32 features in [0, 1]
+        """
+        x = np.atleast_2d(joint_positions)  # (N, 6)
+        # Random Fourier features: sin(W @ x + b)
+        raw = np.sin(x @ self._W.T + self._b)  # (N, output_dim)
+        # Scale and shift to [0, 1] range
+        features = raw * self._scale + 0.5
+        features = np.clip(features, 0.0, 1.0)
+        if features.shape[0] == 1:
+            return features[0].astype(np.float32)
+        return features.astype(np.float32)
 
 
 def random_config(rng=None):
@@ -58,7 +99,8 @@ def interpolate_trajectory(waypoints, steps_per_segment=60):
 def generate_episode_hdf5(output_dir: str, episode_idx: int, trajectory: np.ndarray,
                           model, control_rate: float = CONTROL_RATE,
                           steps_per_target: int = 15, render: bool = False,
-                          img_size: int = 64):
+                          img_size: int = 64,
+                          feature_gen: SyntheticFeatureGenerator = None):
     """Simulate a joint trajectory in MuJoCo and write to HDF5.
 
     Uses realistic control: joint_command stays constant (target position)
@@ -69,7 +111,10 @@ def generate_episode_hdf5(output_dir: str, episode_idx: int, trajectory: np.ndar
     Args:
         trajectory: Waypoints to visit (N, 6)
         steps_per_target: Physics steps to hold each waypoint command constant
+        feature_gen: Optional synthetic visual feature generator
     """
+    if feature_gen is None:
+        feature_gen = SyntheticFeatureGenerator()
     data = mujoco.MjData(model)
     data.qpos[:6] = trajectory[0].copy()
     mujoco.mj_forward(model, data)
@@ -86,6 +131,7 @@ def generate_episode_hdf5(output_dir: str, episode_idx: int, trajectory: np.ndar
     joint_state_pos_list = []
     joint_state_vel_list = []
     timestamps_list = []
+    image_feature_list = []  # synthetic visual features
     image_list = [] if render else None
 
     # Use velocity-limited control to simulate realistic dynamics.
@@ -131,6 +177,9 @@ def generate_episode_hdf5(output_dir: str, episode_idx: int, trajectory: np.ndar
             joint_state_vel_list.append(data.qvel[:6])
             timestamps_list.append(time.time() - t0)
 
+            # Generate synthetic visual features from current joint state
+            image_feature_list.append(feature_gen.encode(data.qpos[:6]))
+
             # Render offscreen image
             if renderer is not None:
                 renderer.update_scene(data, camera="fixed")
@@ -141,6 +190,7 @@ def generate_episode_hdf5(output_dir: str, episode_idx: int, trajectory: np.ndar
     joint_state_pos = np.array(joint_state_pos_list, dtype=np.float64)
     joint_state_vel = np.array(joint_state_vel_list, dtype=np.float64)
     timestamps = np.array(timestamps_list, dtype=np.float64)
+    image_features = np.array(image_feature_list, dtype=np.float32)
     n_steps = len(joint_cmd)
 
     # Convert image list to array
@@ -166,6 +216,7 @@ def generate_episode_hdf5(output_dir: str, episode_idx: int, trajectory: np.ndar
         ep.create_dataset("joint_state/position_timestamp", data=timestamps, compression="gzip")
         ep.create_dataset("gripper/command", data=gripper_cmd, compression="gzip")
         ep.create_dataset("gripper/state", data=gripper_state, compression="gzip")
+        ep.create_dataset("observation/image_features", data=image_features, compression="gzip")
         if has_images:
             ep.create_dataset("sensors/camera/rgb", data=images, compression="gzip",
                               chunks=(1, img_size, img_size, 3))

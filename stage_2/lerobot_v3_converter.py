@@ -52,6 +52,11 @@ FEATURES = {
         "shape": [1],
         "names": ["gripper"],
     },
+    "observation.image_features": {
+        "dtype": "float32",
+        "shape": [128],
+        "names": None,  # 128-dim synthetic features, no per-dim names
+    },
 }
 
 # Mapping from UMI HDF5 keys to LeRobot feature keys
@@ -61,6 +66,7 @@ UMI_TO_LEROBOT = {
     "joint_state/velocity": "observation.joint_velocity",
     "gripper/command": "action.gripper",
     "gripper/state": "observation.gripper",
+    "observation/image_features": "observation.image_features",
 }
 
 CHUNK_SIZE = 1000  # max files per chunk directory
