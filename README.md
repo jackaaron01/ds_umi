@@ -23,7 +23,7 @@
 | DP 训练 Loss（state+visual, 5K steps） | 0.24→0.05 | 收敛 |
 | FK 精度（MuJoCo vs 手写） | 0.000mm | — |
 
-### 已注册模型（7 个）
+### 已注册模型（9 个）
 
 | 模型 | 类型 | 参数 | 数据 | Loss | Test MSE |
 |------|------|------|------|------|----------|
@@ -32,10 +32,22 @@
 | act_teleop | ACT | 9.8M | 11 eps 人类遥操作 | 0.124 | 1.65 |
 | act_mixed | ACT | 9.8M | 300 合成 + 11 人类 | 0.199 | 1.77 |
 | dp_diverse_10k | Diffusion | 63.3M | 300 eps 合成数据 | 0.039 | 0.052 |
-| **act_visual** | **ACT** | **9.8M** | **300 eps 合成（128-dim 视觉特征）** | **0.184** | — |
-| **dp_visual** | **Diffusion** | **63.3M** | **300 eps 合成（128-dim 视觉特征）** | **0.053** | — |
+| act_visual | ACT | 9.8M | 300 eps（128-dim 视觉特征） | 0.184 | — |
+| dp_visual | Diffusion | 63.3M | 300 eps（128-dim 视觉特征） | 0.053 | — |
+| act_state_only | ACT | 9.8M | 300 eps（state-only 基线） | 0.184 | 0.851 |
+| **act_goal** | **ACT** | **9.8M** | **400 eps（目标条件化）** | **0.167** | — |
 
-> **视觉特征说明**：使用随机傅里叶特征（`SyntheticFeatureGenerator`）从关节状态生成 128 维合成视觉特征，模拟冻结的视觉编码器输出。这允许在无法进行 GPU 离线渲染的环境中构建端到端 image→action 训练管道。当真实相机渲染可用时，可无缝替换为真实图像特征。
+### 目标条件化（Goal-Conditioned Policy）
+
+最新进展：训练了目标条件化 ACT 策略，输入 `(current_state, goal_position) → action`，模型学会朝不同目标移动：
+
+| 目标 | 起始距离 | 最小距离 | 改善 |
+|------|----------|----------|------|
+| Goal 0 (home) | 3.38 rad | 2.94 rad | 13% |
+| Goal 3 (forward) | 4.01 rad | 2.63 rad | 34% |
+| Goal 6 (far reach) | 3.76 rad | 1.59 rad | **58%** |
+
+> **关键发现**：`goal_position`（6 维连续向量）条件化有效，而 `task_index`（one-hot）条件化完全无效——模型忽略了离散的任务索引。连续目标表示提供了可用的空间信息。
 
 查看模型：`python3 stage_2/umi_pipeline.py models`
 模型对比：`python3 stage_2/umi_pipeline.py compare`
@@ -180,6 +192,11 @@ Model Registry                  ← 模型元数据 + 对比评估
 | 键盘遥操作 | `simulation/keyboard_teleop.py` | 键盘控制 MuJoCo 机械臂 |
 | 3D 可视化 | `simulation/viewer_node.py` | MuJoCo 窗口渲染 |
 | MJCF 模型 | `simulation/xarm6.xml` | 精确 DH 模型（14 bodies, FK 误差 0mm） |
+| 多任务数据 | `generate_multitask_data.py` | 任务条件化数据生成（5 个到达任务） |
+| 目标条件数据 | `generate_goal_data.py` | 目标条件化数据生成（8 个目标，400 eps） |
+| 多任务训练 | `train_multitask_act.py` | 任务条件化 ACT 训练 |
+| 目标条件训练 | `train_goal_act.py` | 目标条件化 ACT 训练（state+goal → action） |
+| 多任务评估 | `evaluate_multitask.py` | 多任务/目标条件化策略 rollout 评估 |
 
 详细架构见 [`CLAUDE.md`](CLAUDE.md)，阶段一模块文档见 [`stage_1/README.md`](stage_1/README.md)。
 

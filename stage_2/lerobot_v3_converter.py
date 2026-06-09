@@ -55,7 +55,12 @@ FEATURES = {
     "observation.image_features": {
         "dtype": "float32",
         "shape": [128],
-        "names": None,  # 128-dim synthetic features, no per-dim names
+        "names": None,
+    },
+    "observation.goal_position": {
+        "dtype": "float32",
+        "shape": [6],
+        "names": ["goal_1", "goal_2", "goal_3", "goal_4", "goal_5", "goal_6"],
     },
 }
 
@@ -67,6 +72,7 @@ UMI_TO_LEROBOT = {
     "gripper/command": "action.gripper",
     "gripper/state": "observation.gripper",
     "observation/image_features": "observation.image_features",
+    "observation/goal_position": "observation.goal_position",
 }
 
 CHUNK_SIZE = 1000  # max files per chunk directory
@@ -141,6 +147,7 @@ def build_dataframe(
     data: dict,
     timestamps: Optional[np.ndarray],
     global_frame_start: int,
+    task_index: int = 0,
 ) -> pd.DataFrame:
     """Build a Parquet-ready DataFrame for one episode."""
     rows = []
@@ -150,7 +157,7 @@ def build_dataframe(
             "episode_index": int(episode_idx),
             "frame_index": int(i),
             "index": int(global_frame_start + i),
-            "task_index": int(0),  # placeholder
+            "task_index": int(task_index),
         }
         # Timestamp: seconds since episode start
         if timestamps is not None and i < len(timestamps):
@@ -244,9 +251,14 @@ def write_episodes_metadata(output_dir: str, episodes: list):
 
 
 def convert_directory(
-    input_dir: str, output_dir: str, fps: int = 30, task_yaml: str = None
+    input_dir: str, output_dir: str, fps: int = 30, task_yaml: str = None,
+    task_index_in_data: bool = False,
 ) -> ConversionStats:
-    """Convert all HDF5 episodes in a directory to LeRobot v3.0 format."""
+    """Convert all HDF5 episodes in a directory to LeRobot v3.0 format.
+
+    Args:
+        task_index_in_data: If True, read per-episode task_index from HDF5 attrs.
+    """
     os.makedirs(output_dir, exist_ok=True)
 
     # Clear output if exists
@@ -275,12 +287,21 @@ def convert_directory(
         ep_idx = _ep_idx_from_path(h5_path)
         _, n_steps, data, timestamps, has_images = read_episode_data(h5_path, episode_index=ep_idx)
 
-        # Get task label for this episode (from per-episode attr or default)
+        # Get task_index from HDF5 attributes or default
+        task_idx = 0
+        if task_index_in_data:
+            with h5py.File(h5_path, "r") as f:
+                eps = [k for k in f.keys() if k.startswith("episode_")]
+                if eps and "task_index" in f[eps[0]].attrs:
+                    task_idx = int(f[eps[0]].attrs["task_index"])
+
+        # Get task label for this episode
         task_label = ""
         if task_manager is not None:
             task_label = task_manager.get_task(task_manager.default_task_index).description
 
-        df = build_dataframe(ep_idx, n_steps, data, timestamps, global_frame)
+        df = build_dataframe(ep_idx, n_steps, data, timestamps, global_frame,
+                             task_index=task_idx)
         all_dfs.append(df)
 
         stats.total_episodes += 1
@@ -288,7 +309,8 @@ def convert_directory(
         stats.episodes.append((ep_idx, n_steps, task_label))
         global_frame += n_steps
 
-        print(f"  Episode {ep_idx}: {n_steps} frames {'(+images)' if has_images else ''}")
+        print(f"  Episode {ep_idx}: {n_steps} frames (task={task_idx})"
+              f"{' (+images)' if has_images else ''}")
 
     # Write all data to a single Parquet file (will split into chunks if > DATA_FILE_SIZE_MB)
     if all_dfs:
