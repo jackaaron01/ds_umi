@@ -74,17 +74,24 @@ def generate_episode_hdf5(output_dir: str, episode_idx: int, trajectory: np.ndar
     mujoco.mj_forward(model, data)
 
     n_waypoints = len(trajectory)
-    n_steps = n_waypoints * steps_per_target
 
-    joint_cmd = np.zeros((n_steps, 6), dtype=np.float64)
-    joint_state_pos = np.zeros((n_steps, 6), dtype=np.float64)
-    joint_state_vel = np.zeros((n_steps, 6), dtype=np.float64)
-    timestamps = np.zeros(n_steps, dtype=np.float64)
+    # Use lists for dynamic sizing (pauses add variable steps)
+    joint_cmd_list = []
+    joint_state_pos_list = []
+    joint_state_vel_list = []
+    timestamps_list = []
 
     # Use velocity-limited control to simulate realistic dynamics.
     # MuJoCo's position servo reaches target instantly, but a real robot
     # takes time. We simulate this by limiting the velocity at each step.
-    max_vel = 1.5  # rad/s — realistic joint velocity limit
+    # Vary max velocity per episode for diversity (0.3 - 3.0 rad/s)
+    rng = np.random.RandomState(episode_idx + int(time.time() * 1000) % 10000)
+    max_vel = rng.uniform(0.5, 3.0)  # rad/s
+
+    # Noise parameters for realistic human-like jitter
+    cmd_noise_std = rng.uniform(0.001, 0.008)  # rad — command noise
+    obs_noise_std = rng.uniform(0.001, 0.005)  # rad — observation noise
+    pause_prob = rng.uniform(0, 0.15)  # probability of pausing at a waypoint
 
     dt = 1.0 / control_rate
     current_cmd = trajectory[0].copy()
@@ -93,7 +100,10 @@ def generate_episode_hdf5(output_dir: str, episode_idx: int, trajectory: np.ndar
     step = 0
     for w in range(n_waypoints):
         target = trajectory[w]
-        for _ in range(steps_per_target):
+        # Occasionally pause at waypoints (simulates human hesitation)
+        n_pause = rng.randint(5, 20) if rng.random() < pause_prob else 0
+
+        for _ in range(steps_per_target + n_pause):
             # Move current_cmd towards target at limited velocity
             delta = target - current_cmd
             max_step = max_vel * dt
@@ -101,27 +111,32 @@ def generate_episode_hdf5(output_dir: str, episode_idx: int, trajectory: np.ndar
                 delta = delta / np.linalg.norm(delta) * max_step
             current_cmd = current_cmd + delta
 
-            # Apply the command to MuJoCo (position servo tracks it)
-            data.ctrl[:6] = current_cmd
+            # Add Gaussian noise to command (simulates human hand tremor)
+            noisy_cmd = current_cmd + rng.randn(6) * cmd_noise_std
+
+            # Apply the noisy command to MuJoCo
+            data.ctrl[:6] = noisy_cmd
             mujoco.mj_step(model, data)
 
-            # Record: joint_command = what we COMMANDED (evolving target)
-            #         joint_state = what the robot ACTUALLY is
-            joint_cmd[step] = current_cmd.copy()
-            joint_state_pos[step] = data.qpos[:6]
-            joint_state_vel[step] = data.qvel[:6]
-            timestamps[step] = time.time() - t0
-            step += 1
+            # Record: clean command vs noisy observation
+            joint_cmd_list.append(current_cmd.copy())
+            joint_state_pos_list.append(data.qpos[:6] + rng.randn(6) * obs_noise_std)
+            joint_state_vel_list.append(data.qvel[:6])
+            timestamps_list.append(time.time() - t0)
+
+    # Convert lists to arrays
+    joint_cmd = np.array(joint_cmd_list, dtype=np.float64)
+    joint_state_pos = np.array(joint_state_pos_list, dtype=np.float64)
+    joint_state_vel = np.array(joint_state_vel_list, dtype=np.float64)
+    timestamps = np.array(timestamps_list, dtype=np.float64)
+    n_steps = len(joint_cmd)
 
     # Gripper: random open/close pattern
-    gripper_cmd = np.zeros(n_steps, dtype=np.float64)
-    gripper_state = np.zeros(n_steps, dtype=np.float64)
-    # Simple pattern: open most of the time, close briefly in middle
+    gripper_cmd = np.ones(n_steps, dtype=np.float64)
     close_start = n_steps // 3
     close_end = 2 * n_steps // 3
-    gripper_cmd[:] = 1.0
     gripper_cmd[close_start:close_end] = 0.0
-    gripper_state[:] = gripper_cmd  # In MuJoCo, gripper follows command exactly
+    gripper_state = gripper_cmd.copy()
 
     # Write HDF5
     h5_path = os.path.join(output_dir, f"episode_{episode_idx:06d}.h5")
