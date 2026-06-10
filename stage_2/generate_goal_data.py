@@ -75,6 +75,9 @@ def generate_goal_episode(output_dir, episode_idx, goal_q, model,
     current_cmd = start.copy()
     steps_per_target = rng.randint(15, 30)
 
+    # Physics steps per control step: timestep=0.002s, CONTROL_RATE=30Hz
+    PHYSICS_STEPS = max(1, int(1.0 / CONTROL_RATE / model.opt.timestep))
+
     joint_cmd_list, joint_state_list, joint_vel_list = [], [], []
     timestamps_list, img_feat_list, goal_list = [], [], []
 
@@ -93,7 +96,9 @@ def generate_goal_episode(output_dir, episode_idx, goal_q, model,
 
             noisy_cmd = current_cmd + rng.randn(6) * cmd_noise_std
             data.ctrl[:6] = noisy_cmd
-            mujoco.mj_step(model, data)
+            # Multiple physics steps per control step so servo can reach target
+            for _ in range(PHYSICS_STEPS):
+                mujoco.mj_step(model, data)
 
             joint_cmd_list.append(current_cmd.copy())
             joint_state_list.append(data.qpos[:6] + rng.randn(6) * obs_noise_std)

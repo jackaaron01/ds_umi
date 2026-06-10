@@ -113,7 +113,9 @@ def rollout(model, cfg, model_type, input_keys, model_path,
                 action = d.qpos[:6]  # fallback to stay in place
 
             d.ctrl[:6] = action
-            mujoco.mj_step(m, d)
+            # Multiple physics steps per control step (timestep=0.002s, CTRL=30Hz)
+            for _ in range(16):
+                mujoco.mj_step(m, d)
 
             dist = float(np.linalg.norm(d.qpos[:6] - target_q))
             min_dist = min(min_dist, dist)

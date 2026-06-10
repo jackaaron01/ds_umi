@@ -169,7 +169,10 @@ def generate_episode_hdf5(output_dir: str, episode_idx: int, trajectory: np.ndar
 
             # Apply the noisy command to MuJoCo
             data.ctrl[:6] = noisy_cmd
-            mujoco.mj_step(model, data)
+            # Multiple physics steps (timestep=0.002s → 16 steps @ 30Hz)
+            PHYSICS_STEPS = max(1, int(1.0 / control_rate / model.opt.timestep))
+            for _ in range(PHYSICS_STEPS):
+                mujoco.mj_step(model, data)
 
             # Record: clean command vs noisy observation
             joint_cmd_list.append(current_cmd.copy())
