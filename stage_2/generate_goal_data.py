@@ -102,13 +102,23 @@ def generate_goal_episode(output_dir, episode_idx, goal_q, model,
             img_feat_list.append(feature_gen.encode(data.qpos[:6]))
             goal_list.append(goal.copy())
 
-    joint_cmd = np.array(joint_cmd_list, dtype=np.float64)
+    joint_cmd_raw = np.array(joint_cmd_list, dtype=np.float64)
     joint_state = np.array(joint_state_list, dtype=np.float64)
     joint_vel = np.array(joint_vel_list, dtype=np.float64)
     timestamps = np.array(timestamps_list, dtype=np.float64)
     img_feat = np.array(img_feat_list, dtype=np.float32)
     goals = np.array(goal_list, dtype=np.float32)
-    n_steps = len(joint_cmd)
+    n_steps = len(joint_cmd_raw)
+
+    # ── Lookahead action transformation ──
+    # Instead of action[i] = cmd[i] (current command, very close to state[i]),
+    # use action[i] = cmd[i + LOOKAHEAD] (future target, has meaningful delta).
+    # This teaches the model to predict WHERE TO GO, not where it already is.
+    LOOKAHEAD = rng.randint(8, 15)  # 0.27-0.5 seconds ahead at 30Hz
+    joint_cmd = np.zeros_like(joint_cmd_raw)
+    for i in range(n_steps):
+        fut_idx = min(i + LOOKAHEAD, n_steps - 1)
+        joint_cmd[i] = joint_cmd_raw[fut_idx]
 
     gripper_cmd = np.ones(n_steps, dtype=np.float64)
     gripper_cmd[n_steps//3:2*n_steps//3] = 0.0

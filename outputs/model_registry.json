@@ -110,6 +110,18 @@
       "final_loss": 0.167,
       "input_features": ["joint_state(6)", "goal_position(6)"],
       "notes": "Goal-conditioned: (state, goal) → action. Goal conditioning WORKS — 58% distance reduction on held-out goal. Generalizes across goals."
+    },
+    {
+      "name": "act_goal_la",
+      "path": "outputs/act_goal_la/best.pt",
+      "type": "ACT",
+      "params": 9832326,
+      "data": "goal_la_dataset_v3 (400 eps, 57K frames, 8 goals, lookahead actions)",
+      "steps": 15000,
+      "final_loss": 0.165,
+      "input_features": ["joint_state(6)", "goal_position(6)"],
+      "eval_improvement": "25.5% (seen: 26.4%, unseen: 23.8%)",
+      "notes": "Lookahead actions (action=cmd[i+10]) → 5× larger obs-act diff. 2× better rollout than act_goal, 5× better than state-only. Best model so far."
     }
   ]
 }
