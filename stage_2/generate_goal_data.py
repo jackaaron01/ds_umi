@@ -40,7 +40,7 @@ GOALS = [
 
 
 def generate_goal_episode(output_dir, episode_idx, goal_q, model,
-                          feature_gen=None, rng=None):
+                          feature_gen=None, rng=None, renderer=None):
     """Generate one episode: start random → go to goal_q."""
     if rng is None:
         rng = np.random.RandomState(episode_idx)
@@ -79,7 +79,7 @@ def generate_goal_episode(output_dir, episode_idx, goal_q, model,
     PHYSICS_STEPS = max(1, int(1.0 / CONTROL_RATE / model.opt.timestep))
 
     joint_cmd_list, joint_state_list, joint_vel_list = [], [], []
-    timestamps_list, img_feat_list, goal_list = [], [], []
+    timestamps_list, img_feat_list, goal_list, image_list = [], [], [], []
 
     t0 = time.time()
     for w in range(len(waypoints)):
@@ -106,6 +106,8 @@ def generate_goal_episode(output_dir, episode_idx, goal_q, model,
             timestamps_list.append(time.time() - t0)
             img_feat_list.append(feature_gen.encode(data.qpos[:6]))
             goal_list.append(goal.copy())
+            if renderer is not None:
+                image_list.append(renderer.render(data))
 
     joint_cmd_raw = np.array(joint_cmd_list, dtype=np.float64)
     joint_state = np.array(joint_state_list, dtype=np.float64)
@@ -140,6 +142,10 @@ def generate_goal_episode(output_dir, episode_idx, goal_q, model,
         ep.create_dataset("gripper/state", data=gripper_cmd.copy(), compression="gzip")
         ep.create_dataset("observation/image_features", data=img_feat, compression="gzip")
         ep.create_dataset("observation/goal_position", data=goals, compression="gzip")
+        if renderer is not None and len(image_list) > 0:
+            images = np.stack(image_list, axis=0)
+            ep.create_dataset("sensors/camera/rgb", data=images, compression="gzip",
+                              chunks=(1, images.shape[1], images.shape[2], 3))
         ep.attrs["num_steps"] = n_steps
 
     return h5_path, n_steps
@@ -150,6 +156,10 @@ def main():
     parser.add_argument("-n", "--episodes", type=int, default=300)
     parser.add_argument("-o", "--output", default="/workspace/umi/data/goal_dataset")
     parser.add_argument("--v3", action="store_true")
+    parser.add_argument("--render", action="store_true",
+                        help="Render camera images alongside joint data")
+    parser.add_argument("--img-size", type=int, default=64,
+                        help="Image size for rendered frames")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
@@ -159,6 +169,13 @@ def main():
     model_path = os.path.join(os.path.dirname(__file__), "simulation", "xarm6.xml")
     model = mujoco.MjModel.from_xml_path(model_path)
     feature_gen = SyntheticFeatureGenerator(seed=args.seed)
+
+    # Create offscreen renderer if requested
+    renderer = None
+    if args.render:
+        from stage_2.mujoco_renderer import MuJoCoRenderer
+        renderer = MuJoCoRenderer(model, width=args.img_size, height=args.img_size)
+        print(f"Renderer: {args.img_size}x{args.img_size}")
 
     n_goals = len(GOALS)
     print(f"Goals: {n_goals}")
@@ -173,7 +190,8 @@ def main():
         goal = GOALS[goal_idx]
 
         h5_path, n_steps = generate_goal_episode(
-            args.output, ep, goal, model, feature_gen=feature_gen, rng=rng
+            args.output, ep, goal, model, feature_gen=feature_gen, rng=rng,
+            renderer=renderer,
         )
         total_steps += n_steps
 
@@ -185,6 +203,9 @@ def main():
     elapsed = time.time() - t0
     print(f"\nGenerated {args.episodes} episodes, {total_steps} steps in {elapsed:.1f}s")
     print(f"Output: {args.output}/")
+
+    if renderer is not None:
+        renderer.close()
 
     if args.v3:
         v3_dir = args.output + "_v3"
