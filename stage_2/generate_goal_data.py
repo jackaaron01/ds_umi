@@ -114,7 +114,7 @@ def generate_goal_episode(output_dir, episode_idx, goal_q, model,
     # Instead of action[i] = cmd[i] (current command, very close to state[i]),
     # use action[i] = cmd[i + LOOKAHEAD] (future target, has meaningful delta).
     # This teaches the model to predict WHERE TO GO, not where it already is.
-    LOOKAHEAD = rng.randint(8, 15)  # 0.27-0.5 seconds ahead at 30Hz
+    LOOKAHEAD = rng.randint(20, 30)  # 0.67-1.0 seconds ahead at 30Hz
     joint_cmd = np.zeros_like(joint_cmd_raw)
     for i in range(n_steps):
         fut_idx = min(i + LOOKAHEAD, n_steps - 1)

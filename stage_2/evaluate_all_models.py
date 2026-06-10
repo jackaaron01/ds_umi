@@ -203,12 +203,11 @@ def main():
     model_path = os.path.join(os.path.dirname(__file__), "simulation", "xarm6.xml")
 
     MODELS = {
-        "act_goal_la":      "/workspace/umi/outputs/act_goal_la/best.pt",
-        "act_goal":         "/workspace/umi/outputs/act_goal/best.pt",
-        "act_state_only":   "/workspace/umi/outputs/act_state_only/best.pt",
-        "act_diverse_20k":  "/workspace/umi/outputs/act_diverse_20k/best.pt",
-        "act_visual":       "/workspace/umi/outputs/act_visual/best.pt",
-        "act_diverse_v2":   "/workspace/umi/outputs/act_diverse_v2/best.pt",
+        "act_goal_la_big":   "/workspace/umi/outputs/act_goal_la_big/best.pt",
+        "act_goal_la":       "/workspace/umi/outputs/act_goal_la/best.pt",
+        "act_goal":          "/workspace/umi/outputs/act_goal/best.pt",
+        "act_state_only":    "/workspace/umi/outputs/act_state_only/best.pt",
+        "act_diverse_20k":   "/workspace/umi/outputs/act_diverse_20k/best.pt",
     }
 
     all_results = {}
