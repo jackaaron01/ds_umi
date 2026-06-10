@@ -44,3 +44,4 @@ data/
 !docker/.env
 outputs/
 !outputs/model_registry.json
+!outputs/figures/

@@ -55,8 +55,20 @@ class MuJoCoRenderer:
         return self._height
 
     def close(self):
+        """Close the viewer but DON'T terminate GLFW globally.
+
+        MujocoViewer.close() calls glfw.terminate() which kills the GLFW
+        library globally, preventing any future windows. We manually clean
+        up the context and window instead.
+        """
         if hasattr(self, '_viewer') and self._viewer:
-            self._viewer.close()
+            v = self._viewer
+            if hasattr(v, 'ctx') and v.ctx:
+                v.ctx.free()
+            if hasattr(v, 'window') and v.window:
+                from mujoco.glfw import glfw
+                glfw.destroy_window(v.window)
+            v.is_alive = False  # prevent double-close
 
     def __del__(self):
         try:
