@@ -54,7 +54,7 @@ FEATURES = {
     },
     "observation.image_features": {
         "dtype": "float32",
-        "shape": [128],
+        "shape": [512],  # ResNet18 feature dimension (was 128 for synthetic)
         "names": None,
     },
     "observation.goal_position": {
