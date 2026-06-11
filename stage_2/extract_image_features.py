@@ -108,13 +108,19 @@ def main():
             ep_name = eps[0]
             ep = src[ep_name]
 
-            if "sensors/camera/rgb" not in ep:
+            # Check for ego or rgb camera images
+            img_key = None
+            for key in ["sensors/camera/ego", "sensors/camera/rgb"]:
+                if key in ep:
+                    img_key = key
+                    break
+            if img_key is None:
                 print(f"  {fname}: no images, copying as-is")
                 import shutil
                 shutil.copy2(src_path, dst_path)
                 continue
 
-            images = ep["sensors/camera/rgb"][:]
+            images = ep[img_key][:]
             n_frames = len(images)
             print(f"  {fname}: {n_frames} frames, extracting features...", end="", flush=True)
 

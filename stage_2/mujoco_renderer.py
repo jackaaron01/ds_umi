@@ -29,22 +29,30 @@ class MuJoCoRenderer:
                                     width=width, height=height,
                                     title="umi_renderer")
 
-    def render(self, data: mujoco.MjData = None) -> np.ndarray:
+    def render(self, data: mujoco.MjData = None,
+               camera: str = "fixed") -> np.ndarray:
         """Render current scene and return RGB image.
 
         Args:
             data: MuJoCo data (if None, uses internal data — update qpos first)
+            camera: Camera name to use ("fixed" or "ego")
 
         Returns:
             RGB image as uint8 numpy array (height, width, 3)
         """
         if data is not None:
-            # Copy joint positions to internal data
             self._data.qpos[:] = data.qpos[:]
             self._data.qvel[:] = data.qvel[:] if data.qvel is not None else 0
             mujoco.mj_forward(self._model, self._data)
 
-        return self._viewer.read_pixels()
+        # Find camera ID by name
+        cam_id = -1  # free camera
+        for i in range(self._model.ncam):
+            if self._model.camera(i).name == camera:
+                cam_id = i
+                break
+
+        return self._viewer.read_pixels(camid=cam_id)
 
     @property
     def width(self):
