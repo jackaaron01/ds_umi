@@ -160,13 +160,16 @@ def main():
                         help="Render camera images alongside joint data")
     parser.add_argument("--img-size", type=int, default=64,
                         help="Image size for rendered frames")
+    parser.add_argument("--model", default=None,
+                        help="Path to MJCF model file")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
     rng = np.random.RandomState(args.seed)
     os.makedirs(args.output, exist_ok=True)
 
-    model_path = os.path.join(os.path.dirname(__file__), "simulation", "xarm6.xml")
+    model_path = args.model or os.path.join(
+        os.path.dirname(__file__), "simulation", "xarm6.xml")
     model = mujoco.MjModel.from_xml_path(model_path)
     feature_gen = SyntheticFeatureGenerator(seed=args.seed)
 

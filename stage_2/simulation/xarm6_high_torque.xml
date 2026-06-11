@@ -1,0 +1,72 @@
+<mujoco model="xarm6">
+  <compiler angle="radian"/>
+  <option gravity="0 0 -9.81" timestep="0.002"/>
+  <default>
+    <joint limited="true" damping="2"/>
+    <position ctrllimited="true" forcerange="-200 200" kp="500"/>
+  </default>
+  <worldbody>
+    <camera name="fixed" pos="1.2 0 1.0" xyaxes="-1 0 0 0 -0.5 1"/>
+    <body name="base" pos="0 0 0">
+      <geom type="cylinder" size="0.10 0.08" pos="0 0 0.08" rgba="0.3 0.3 0.35 1"/>
+      <geom type="cylinder" size="0.105 0.01" pos="0 0 0.155" rgba="0.5 0.5 0.5 1" contype="0" conaffinity="0"/>
+        <body name="j1_rotor" pos="0 0 0">
+          <joint name="joint1" type="hinge" axis="0 0 1" range="-6.2832 6.2832"/>
+          <body name="link1" pos="0.000000 0.000000 0.267000" euler="-0.000000 0.000000 -0.000000">
+            <geom type="cylinder" size="0.07 0.14" pos="0 0 0.13" rgba="0.25 0.25 0.35 1"/>
+            <geom type="cylinder" size="0.08 0.008" pos="0 0 0.01" rgba="0.6 0.6 0.6 1" contype="0" conaffinity="0"/>
+            <geom type="cylinder" size="0.08 0.008" pos="0 0 0.25" rgba="0.6 0.6 0.6 1" contype="0" conaffinity="0"/>
+            <body name="j2_rotor" pos="0 0 0">
+              <joint name="joint2" type="hinge" axis="0 0 1" range="-2.2515 2.2515"/>
+              <body name="link2" pos="0.000000 0.000000 0.000000" euler="0.000000 1.570796 -1.570796">
+                <geom type="capsule" size="0.06 0.18" pos="0 0 0.0" rgba="0.25 0.25 0.35 1"/>
+                <geom type="cylinder" size="0.065 0.007" pos="0 0 -0.17" rgba="0.5 0.5 0.5 1" contype="0" conaffinity="0"/>
+                <geom type="cylinder" size="0.065 0.007" pos="0 0 0.17" rgba="0.5 0.5 0.5 1" contype="0" conaffinity="0"/>
+                <body name="j3_rotor" pos="0 0 0">
+                  <joint name="joint3" type="hinge" axis="0 0 1" range="-6.2832 6.2832"/>
+                  <body name="link3" pos="0.289500 0.000000 0.000000" euler="-0.000000 0.000000 -0.000000">
+                    <geom type="capsule" size="0.05 0.15" pos="0 0 0.0" rgba="0.25 0.25 0.35 1"/>
+                    <geom type="cylinder" size="0.055 0.006" pos="0 0 -0.14" rgba="0.5 0.5 0.5 1" contype="0" conaffinity="0"/>
+                    <geom type="cylinder" size="0.055 0.006" pos="0 0 0.14" rgba="0.5 0.5 0.5 1" contype="0" conaffinity="0"/>
+                    <body name="j4_rotor" pos="0 0 0">
+                      <joint name="joint4" type="hinge" axis="0 0 1" range="-6.2832 6.2832"/>
+                      <body name="link4" pos="0.077500 0.000000 0.342500" euler="-1.570796 0.000000 -0.000000">
+                        <geom type="capsule" size="0.045 0.12" pos="0 0 0.0" rgba="0.25 0.25 0.35 1"/>
+                        <geom type="cylinder" size="0.05 0.006" pos="0 0 -0.11" rgba="0.5 0.5 0.5 1" contype="0" conaffinity="0"/>
+                        <geom type="cylinder" size="0.05 0.006" pos="0 0 0.11" rgba="0.5 0.5 0.5 1" contype="0" conaffinity="0"/>
+                        <body name="j5_rotor" pos="0 0 0">
+                          <joint name="joint5" type="hinge" axis="0 0 1" range="-6.2832 6.2832"/>
+                          <body name="link5" pos="0.000000 0.000000 0.000000" euler="1.570796 0.000000 -0.000000">
+                            <geom type="capsule" size="0.035 0.09" pos="0 0 0.0" rgba="0.25 0.25 0.35 1"/>
+                            <geom type="cylinder" size="0.04 0.005" pos="0 0 -0.08" rgba="0.5 0.5 0.5 1" contype="0" conaffinity="0"/>
+                            <geom type="cylinder" size="0.04 0.005" pos="0 0 0.08" rgba="0.5 0.5 0.5 1" contype="0" conaffinity="0"/>
+                            <body name="j6_rotor" pos="0 0 0">
+                              <joint name="joint6" type="hinge" axis="0 0 1" range="-6.2832 6.2832"/>
+                              <body name="link6" pos="0.000000 0.000000 0.097500" euler="-1.570796 0.000000 -0.000000">
+                                <geom type="capsule" size="0.03 0.07" pos="0 0 0.0" rgba="0.25 0.25 0.35 1"/>
+                                <geom type="cylinder" size="0.035 0.005" pos="0 0 -0.06" rgba="0.5 0.5 0.5 1" contype="0" conaffinity="0"/>
+                                <geom type="cylinder" size="0.04 0.015" pos="0 0 0.07" rgba="0.6 0.3 0.3 1" contype="0" conaffinity="0"/>
+                                <site name="ee" pos="0 0 0" size="0.01" rgba="1 0 0 1"/>
+            </body>
+        </body>
+                </body>
+            </body>
+                    </body>
+                </body>
+                        </body>
+                    </body>
+                            </body>
+                        </body>
+                                </body>
+                            </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <position name="motor1" joint="joint1" ctrlrange="-6.2832 6.2832" kp="500"/>
+    <position name="motor2" joint="joint2" ctrlrange="-2.2515 2.2515" kp="500"/>
+    <position name="motor3" joint="joint3" ctrlrange="-6.2832 6.2832" kp="500"/>
+    <position name="motor4" joint="joint4" ctrlrange="-6.2832 6.2832" kp="500"/>
+    <position name="motor5" joint="joint5" ctrlrange="-6.2832 6.2832" kp="500"/>
+    <position name="motor6" joint="joint6" ctrlrange="-6.2832 6.2832" kp="500"/>
+  </actuator>
+</mujoco>
