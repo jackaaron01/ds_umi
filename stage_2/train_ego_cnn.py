@@ -127,7 +127,7 @@ def main():
     print(f"Device: {device}")
 
     # Dataset
-    ds = EgoCNNDataset("/workspace/umi/data/color_cue_dataset")
+    ds = EgoCNNDataset("/workspace/umi/data/color_cue_dataset")  # single visible marker
     loader = DataLoader(ds, batch_size=128, shuffle=True, num_workers=2,
                         pin_memory=(device.type == "cuda"))
 
@@ -138,17 +138,17 @@ def main():
 
     # Training
     opt = torch.optim.Adam(model.parameters(), lr=3e-4)
-    sch = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=10000)
+    sch = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=20000)
     model.train()
 
     losses = []
     best_loss = float("inf")
     t0 = time.time()
     it = iter(loader)
-    OUT = "/workspace/umi/outputs/ego_cnn_color"
+    OUT = "/workspace/umi/outputs/ego_cnn_noisy"
     os.makedirs(OUT, exist_ok=True)
 
-    N_STEPS = 10000
+    N_STEPS = 20000
     for step in range(N_STEPS):
         try:
             img, state, action = next(it)
@@ -161,7 +161,9 @@ def main():
         action = action.to(device)
 
         opt.zero_grad()
-        pred = model(img, state)
+        # Add noise to state during training — forces model to use images
+        state_noisy = state + torch.randn_like(state) * 0.3
+        pred = model(img, state_noisy)
         loss = F.mse_loss(pred, action)
         loss.backward()
         opt.step()
@@ -173,7 +175,7 @@ def main():
             print(f"  Step {step+1:5d}/{N_STEPS}: loss={loss.item():.4f} "
                   f"avg={avg:.4f} {(step+1)/(time.time()-t0):.0f} s/s")
 
-        if (step + 1) % 2000 == 0:
+        if (step + 1) % 5000 == 0:
             al = np.mean(losses[-500:])
             if al < best_loss:
                 best_loss = al
