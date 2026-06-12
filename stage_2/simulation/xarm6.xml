@@ -7,9 +7,12 @@
   </default>
   <worldbody>
     <camera name="fixed" pos="1.2 0 1.0" xyaxes="-1 0 0 0 -0.5 1"/>
-    <!-- Visual goal marker: bright sphere, repositioned per episode via mocap -->
-    <body name="goal_marker" mocap="true" pos="0.3 0.3 0.5">
+    <!-- Two colored markers (mocap bodies, repositionable) -->
+    <body name="marker_red" mocap="true" pos="0.3 0.2 0.5">
       <geom type="sphere" size="0.04" rgba="1 0.2 0.2 1" contype="0" conaffinity="0"/>
+    </body>
+    <body name="marker_green" mocap="true" pos="0.1 -0.2 0.4">
+      <geom type="sphere" size="0.04" rgba="0.2 1 0.2 1" contype="0" conaffinity="0"/>
     </body>
     <body name="base" pos="0 0 0">
       <geom type="cylinder" size="0.10 0.08" pos="0 0 0.08" rgba="0.3 0.3 0.35 1"/>
