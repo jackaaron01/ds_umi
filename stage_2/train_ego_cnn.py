@@ -127,7 +127,7 @@ def main():
     print(f"Device: {device}")
 
     # Dataset
-    ds = EgoCNNDataset("/workspace/umi/data/marker_dataset")
+    ds = EgoCNNDataset("/workspace/umi/data/vary_marker_dataset")
     loader = DataLoader(ds, batch_size=128, shuffle=True, num_workers=2,
                         pin_memory=(device.type == "cuda"))
 
@@ -145,7 +145,7 @@ def main():
     best_loss = float("inf")
     t0 = time.time()
     it = iter(loader)
-    OUT = "/workspace/umi/outputs/ego_cnn"
+    OUT = "/workspace/umi/outputs/ego_cnn_vary"
     os.makedirs(OUT, exist_ok=True)
 
     N_STEPS = 10000
