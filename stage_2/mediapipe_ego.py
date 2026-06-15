@@ -172,8 +172,8 @@ def main():
     hands = mp_hands.Hands(
         static_image_mode=False,
         max_num_hands=args.max_hands,
-        min_detection_confidence=0.7,
-        min_tracking_confidence=0.5,
+        min_detection_confidence=0.3,  # lower threshold for easier detection
+        min_tracking_confidence=0.3,
     )
 
     # ── Recording state ──
@@ -262,27 +262,26 @@ def main():
                                     (10, 90), cv2.FONT_HERSHEY_SIMPLEX,
                                     0.7, (0, 255, 255), 2)
 
-            # ── FPS display ──
+            # ── FPS + status overlay ──
             fps = 1.0 / max(time.time() - t0, 0.001)
             t0 = time.time()
             status = "[REC]" if recording else "[LIVE]"
-            cv2.putText(rgb_display, f"{status} FPS:{fps:.0f} Frames:{total_frames}",
+            cv2.putText(rgb_display, f"{status} FPS:{fps:.0f} Hands:{len(hand_keypoints)}",
                         (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
+            # Big warning if no hand detected
+            if not hand_keypoints:
+                cv2.putText(rgb_display, "NO HAND", (rgb_display.shape[1]//2 - 80, 60),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 3)
+                cv2.putText(rgb_display, "Show your hand to the camera",
+                            (rgb_display.shape[1]//2 - 140, 100),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 1)
 
             if recording:
                 cv2.circle(rgb_display, (rgb_display.shape[1] - 30, 30),
                            10, (0, 0, 255), -1)
 
-            # ── Depth visualization ──
-            if depth_image is not None:
-                depth_cmap = cv2.applyColorMap(
-                    cv2.convertScaleAbs(depth_image, alpha=0.03),
-                    cv2.COLORMAP_JET)
-                display = np.hstack((rgb_display, depth_cmap))
-            else:
-                display = rgb_display
-
-            cv2.imshow("MediaPipe EGO — Hand Tracking", display)
+            cv2.imshow("MediaPipe EGO — Hand Tracking", rgb_display)
             key = cv2.waitKey(1) & 0xFF
 
             # ── Periodic console status (every 100 frames) ──
