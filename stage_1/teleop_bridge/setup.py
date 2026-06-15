@@ -24,6 +24,7 @@ setup(
             "hand_mapper = stage_1_teleop_bridge.hand_mapper:main",
             "hand_tracking_node = stage_1_teleop_bridge.hand_tracking_node:main",
             "hand_eye_calibrate = stage_1_teleop_bridge.calibrate:main",
+            "mediapipe_bridge = stage_1_teleop_bridge.mediapipe_bridge:main",
         ],
     },
 )

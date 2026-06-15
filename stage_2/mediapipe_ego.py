@@ -11,7 +11,7 @@ Usage (on HOST):
     python3 stage_2/mediapipe_ego.py --record           # record to HDF5
     python3 stage_2/mediapipe_ego.py --record --output data/my_ego.h5
 """
-import sys, os, time, argparse
+import sys, os, time, argparse, socket, json as json_mod
 import numpy as np
 import cv2
 import h5py
@@ -132,6 +132,10 @@ def main():
                         help="Skip depth stream (faster)")
     parser.add_argument("--max-hands", type=int, default=1,
                         help="Max hands to detect")
+    parser.add_argument("--udp", action="store_true",
+                        help="Send hand keypoints via UDP to Docker ROS2 bridge")
+    parser.add_argument("--udp-port", type=int, default=9999,
+                        help="UDP port for ROS2 bridge")
     args = parser.parse_args()
 
     OUT = args.output or os.path.join(PROJ, "..", "data", "mediapipe_ego.h5")
@@ -174,9 +178,16 @@ def main():
 
     os.makedirs(os.path.dirname(OUT) or ".", exist_ok=True)
 
+    # ── UDP sender (to Docker ROS2 bridge) ──
+    udp_sock = None
+    if args.udp:
+        udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        print(f"  UDP: sending to localhost:{args.udp_port} → Docker ROS2 bridge")
+
     print(f"\n{'='*55}")
     print(f"  MediaPipe EGO Tracker")
     print(f"  Max hands: {args.max_hands}  |  Depth: {not args.no_depth}")
+    print(f"  UDP to Docker: {'ON (port '+str(args.udp_port)+')' if args.udp else 'OFF'}")
     print(f"  Recording: {'ON → ' + OUT if recording else 'OFF'}")
     print(f"  'r'=record  's'=snapshot  'q'=quit")
     print(f"{'='*55}")
@@ -216,6 +227,22 @@ def main():
                     for lm in hand_landmarks.landmark:
                         kp_list.extend([lm.x, lm.y, lm.z])
                     hand_keypoints.append(kp_list)
+
+                    # ── Send via UDP to Docker ROS2 bridge ──
+                    if udp_sock and hand_landmarks:
+                        wrist_lm = hand_landmarks.landmark[0]
+                        # Convert normalized coords to approximate meters
+                        # Use depth at wrist pixel for Z, or default scale
+                        wrist_x = (wrist_lm.x - 0.5) * 0.5  # rough meter conversion
+                        wrist_y = (wrist_lm.y - 0.5) * 0.5
+                        wrist_z = wrist_lm.z * 0.5 + 0.3
+
+                        udp_data = json_mod.dumps({
+                            "wrist": [wrist_x, wrist_y, wrist_z, 0, 0, 0, 1],
+                            "keypoints": kp_list,
+                        })
+                        udp_sock.sendto(udp_data.encode("utf-8"),
+                                        ("127.0.0.1", args.udp_port))
 
                     # Show fingertip info
                     tips = get_fingertip_positions(hand_landmarks, rgb_display.shape)
@@ -284,6 +311,8 @@ def main():
         pipeline.stop()
         cv2.destroyAllWindows()
         hands.close()
+        if udp_sock:
+            udp_sock.close()
 
         if recording and frames_rgb:
             _save_recording(OUT, frames_rgb, frames_depth,
