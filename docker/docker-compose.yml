@@ -140,11 +140,20 @@ services:
       # 这里让它和宿主机共享：足够大，不用担心溢出
       - /dev/shm:/dev/shm
 
-      # ---- 可选：硬件设备透传 ----
+      # ---- 硬件设备透传 ----
+      # USB 设备（RealSense 相机等）
+      - /dev/bus/usb:/dev/bus/usb
+      # RealSense 视频设备
+      - /dev/video0:/dev/video0
+      - /dev/video1:/dev/video1
+      - /dev/video2:/dev/video2
+      - /dev/video3:/dev/video3
+      - /dev/video4:/dev/video4
+      - /dev/video5:/dev/video5
+      - /dev/video6:/dev/video6
+      - /dev/video7:/dev/video7
       # 连接 xArm6 时取消注释（USB 串口）
       # - /dev/ttyUSB0:/dev/ttyUSB0
-      # 连接 ZED2 相机时取消注释
-      # - /dev/bus/usb:/dev/bus/usb
 
       # ---- 可选：SSH 密钥 ----
       # 如果需要在容器内 git push/pull 私仓，取消这句
