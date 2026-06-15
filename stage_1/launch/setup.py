@@ -15,6 +15,7 @@ setup(
             "teleop_mock.launch.py",
             "teleop_real.launch.py",
             "teleop_sim_keyboard.launch.py",
+            "ego_mediapipe.launch.py",
         ]),
     ],
     install_requires=["setuptools"],
