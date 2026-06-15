@@ -182,6 +182,7 @@ def main():
     keypoints_data = []
     timestamps = []
     frame_count = 0
+    total_frames = 0
     t0 = time.time()
 
     os.makedirs(os.path.dirname(OUT) or ".", exist_ok=True)
@@ -265,7 +266,7 @@ def main():
             fps = 1.0 / max(time.time() - t0, 0.001)
             t0 = time.time()
             status = "[REC]" if recording else "[LIVE]"
-            cv2.putText(rgb_display, f"{status} FPS:{fps:.0f} Frames:{frame_count}",
+            cv2.putText(rgb_display, f"{status} FPS:{fps:.0f} Frames:{total_frames}",
                         (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
             if recording:
@@ -283,6 +284,15 @@ def main():
 
             cv2.imshow("MediaPipe EGO — Hand Tracking", display)
             key = cv2.waitKey(1) & 0xFF
+
+            # ── Periodic console status (every 100 frames) ──
+            total_frames += 1
+            if total_frames % 100 == 0:
+                hands_detected = len(results.multi_hand_landmarks) if results.multi_hand_landmarks else 0
+                print(f"  [frame {total_frames}] FPS:{fps:.0f} | "
+                      f"Hands:{hands_detected} | "
+                      f"UDP:{'ON' if udp_sock else 'OFF'} | "
+                      f"Recording:{'ON' if recording else 'OFF'}")
 
             # ── Keyboard controls ──
             if key == ord('q'):
