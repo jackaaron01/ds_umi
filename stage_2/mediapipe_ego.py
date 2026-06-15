@@ -93,8 +93,16 @@ def draw_hand_landmarks(image, hand_landmarks, handedness=None):
 
     # Handedness label
     if handedness:
-        label = handedness[0].classification[0].label
-        score = handedness[0].classification[0].score
+        try:
+            label = handedness[0].classification[0].label
+            score = handedness[0].classification[0].score
+        except (TypeError, IndexError):
+            # ClassificationList directly (not in list)
+            try:
+                label = handedness.classification[0].label
+                score = handedness.classification[0].score
+            except AttributeError:
+                label, score = "?", 0.0
         cv2.putText(image, f"{label} ({score:.2f})", (10, 60),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
