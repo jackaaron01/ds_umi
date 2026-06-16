@@ -8,7 +8,7 @@ No ROS2 dependency — pure Python + MuJoCo + socket.
 Usage (in Docker):
     python3 mujoco_ego_sim.py [--port 9999]
 
-Host runs:  python3 stage_2/mediapipe_ego.py --udp
+Host runs:  python3 stage_2/ego/mediapipe_ego.py --udp
 """
 
 import sys, os, time, socket, json, struct, argparse, threading

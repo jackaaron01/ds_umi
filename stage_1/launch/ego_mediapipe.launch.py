@@ -12,7 +12,7 @@ Usage (in Docker):
     ros2 launch launch ego_mediapipe.launch.py
 
 Then on HOST:
-    python3 stage_2/mediapipe_ego.py --udp
+    python3 stage_2/ego/mediapipe_ego.py --udp
 """
 from launch import LaunchDescription
 from launch_ros.actions import Node
@@ -38,7 +38,7 @@ def generate_launch_description():
                 "scale": 1.0,
                 "lowpass_alpha": 0.08,
                 "passthrough": True,
-                "mujoco_model": "/workspace/umi/stage_2/simulation/xarm_mesh.xml",
+                "mujoco_model": "/workspace/umi/stage_2/ego/simulation/xarm_mesh.xml",
             }],
             output="screen",
         ),

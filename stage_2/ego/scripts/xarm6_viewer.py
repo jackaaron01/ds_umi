@@ -10,7 +10,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 
-MODEL = '/workspace/umi/stage_2/simulation/xarm_mesh.xml'
+MODEL = '/workspace/umi/stage_2/ego/simulation/xarm_mesh.xml'
 
 class JointListener(Node):
     def __init__(self):

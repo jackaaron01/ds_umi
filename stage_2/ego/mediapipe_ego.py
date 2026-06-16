@@ -3,7 +3,7 @@
 RealSense + MediaPipe Hands — EGO hand tracking with skeleton overlay.
 
 Displays via matplotlib (works in conda without Qt/GTK issues).
-Usage: python stage_2/mediapipe_ego.py --udp
+Usage: python stage_2/ego/mediapipe_ego.py --udp
 """
 import sys, os, time, argparse, socket, json as json_mod
 import numpy as np

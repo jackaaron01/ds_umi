@@ -6,4 +6,4 @@ source /opt/ros/humble/setup.bash
 source /ros2_ws/install/setup.bash
 export PYTHONPATH=/workspace/umi:${PYTHONPATH}
 echo "=== xArm6 Mesh Viewer (launch_passive): $(date) ==="
-exec python3 -u /workspace/umi/docker/xarm6_viewer.py
+exec python3 -u /workspace/umi/stage_2/ego/scripts/xarm6_viewer.py

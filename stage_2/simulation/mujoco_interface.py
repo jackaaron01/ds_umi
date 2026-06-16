@@ -37,7 +37,7 @@ class MujocoRobotInterface(RobotInterface):
 
     def __init__(self, model_path: str = None, control_rate: float = 60.0):
         self._model_path = model_path or os.path.join(
-            os.path.dirname(__file__), "xarm_mesh.xml"
+            os.path.dirname(__file__), "xarm6.xml"
         )
         self._control_rate = control_rate
         self._dt = 1.0 / control_rate
