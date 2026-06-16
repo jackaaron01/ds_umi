@@ -51,6 +51,20 @@ class EgoSimulator:
         self._q = HOME.copy()
         self._home = HOME.copy()
 
+        # ── Camera control ──────────────────────────────────────────────
+        self._cam_ego_id = mujoco.mj_name2id(
+            self.model, mujoco.mjtObj.mjOBJ_CAMERA, "ego")
+        self._cam_fixed_id = mujoco.mj_name2id(
+            self.model, mujoco.mjtObj.mjOBJ_CAMERA, "fixed")
+        self._cam_mode = "ego"  # default to first-person view
+        self._cam_lock = threading.Lock()
+        self._viewer = None  # set in run()
+
+        if self._cam_ego_id < 0:
+            print("[sim] WARNING: 'ego' camera not found in model")
+        if self._cam_fixed_id < 0:
+            print("[sim] WARNING: 'fixed' camera not found in model")
+
     # ── UDP server ──────────────────────────────────────────────────
     def start_udp(self, port=9999):
         """Listen for MediaPipe hand data on UDP (non-blocking)."""
@@ -139,11 +153,66 @@ class EgoSimulator:
 
         return best_q
 
+    # ── Camera switching ───────────────────────────────────────────────
+    def _on_viewer_key(self, keycode: int):
+        """Handle keyboard shortcuts in MuJoCo viewer (GLFW thread).
+
+        Keys:
+            1 → Ego camera (EE-mounted, first-person)
+            2 → Fixed camera (world-frame overview)
+            3 / Space → Free camera (mouse-controlled fly)
+        """
+        if keycode == 49:       # '1'
+            new_mode = "ego"
+        elif keycode == 50:     # '2'
+            new_mode = "fixed"
+        elif keycode in (51, 32):  # '3' or Space
+            new_mode = "free"
+        else:
+            return
+
+        with self._cam_lock:
+            if new_mode == self._cam_mode:
+                return
+            self._cam_mode = new_mode
+            name = {"ego": "EGO (EE follow)", "fixed": "FIXED (overview)",
+                    "free": "FREE (mouse fly)"}[new_mode]
+            print(f"[sim] Camera: {name}")
+
+        # Apply immediately (we're inside viewer's render lock)
+        if self._viewer is not None:
+            self._apply_camera_mode()
+
+    def _apply_camera_mode(self):
+        """Set viewer camera based on current mode. Call from main or GLFW thread."""
+        v = self._viewer
+        if v is None:
+            return
+        with self._cam_lock:
+            mode = self._cam_mode
+        if mode == "ego" and self._cam_ego_id >= 0:
+            v.cam.type = mujoco.mjtCamera.mjCAMERA_FIXED
+            v.cam.fixedcamid = self._cam_ego_id
+        elif mode == "fixed" and self._cam_fixed_id >= 0:
+            v.cam.type = mujoco.mjtCamera.mjCAMERA_FIXED
+            v.cam.fixedcamid = self._cam_fixed_id
+        else:  # free
+            v.cam.type = mujoco.mjtCamera.mjCAMERA_FREE
+
     # ── Main loop ──────────────────────────────────────────────────
     def run(self):
         """Open viewer and run simulation loop."""
         print(f"[sim] Opening xArm6 viewer...")
-        with launch_passive(self.model, self.data) as viewer:
+        with launch_passive(
+            self.model, self.data,
+            key_callback=self._on_viewer_key,
+        ) as viewer:
+            self._viewer = viewer
+
+            # Default to ego (first-person) camera
+            self._apply_camera_mode()
+            print(f"[sim] Camera: EGO (EE follow) — "
+                  f"press 1=Ego  2=Fixed  3/Space=Free")
             print(f"[sim] Running — move your hand in front of camera")
             step_count = 0
             while self._running and viewer.is_running():
@@ -174,14 +243,18 @@ class EgoSimulator:
                 if step_count % 180 == 0:  # ~ every 3 seconds
                     with self._lock:
                         t = self._target_pos
+                    with self._cam_lock:
+                        cm = self._cam_mode
                     if t is not None:
                         ee = self.data.site_xpos[self.site_id]
                         err = np.linalg.norm(t - ee)
-                        print(f"[sim] target={[round(x,3) for x in t]}  "
+                        print(f"[sim] cam={cm}  "
+                              f"target={[round(x,3) for x in t]}  "
                               f"ee={[round(x,3) for x in ee]}  err={err:.3f}m")
 
                 time.sleep(0.001)  # yield to viewer
 
+            self._viewer = None
             print("[sim] Viewer closed")
 
     def stop(self):

@@ -167,10 +167,22 @@ make up
 # 2. 启动 EGO 仿真器（Docker 内）
 make exec cmd="bash /workspace/umi/stage_2/ego/scripts/restart_ego_sim.sh"
 
-# 3. 启动 MediaPipe 手部追踪（宿主机）
+# 3. 启动 MediaPipe 手部追踪（宿主机，单相机默认）
 conda activate ego
 python stage_2/ego/mediapipe_ego.py --udp
+
+# 3b. 多相机追踪（更鲁棒的手部检测）
+python stage_2/ego/mediapipe_ego.py --udp --camera-serials SN1 SN2
 ```
+
+**MuJoCo 窗口快捷键：**
+| 键 | 视角 |
+|----|------|
+| `1` | **Ego**（EE 跟随，第一人称，默认） |
+| `2` | Fixed（世界帧俯瞰） |
+| `3` / `Space` | Free（鼠标自由旋转） |
+
+控制键：`q` 退出
 
 控制键：`q` 退出
 
