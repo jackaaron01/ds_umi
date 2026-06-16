@@ -181,6 +181,8 @@ class CameraCapture:
             best_label = ""
             wrist_xyz = None
             best_kp = []
+            palm_quat = (0.0, 0.0, 0.0, 1.0)
+            gripper_open = 0.0
 
             if results.multi_hand_landmarks:
                 for i, hlm in enumerate(results.multi_hand_landmarks):
