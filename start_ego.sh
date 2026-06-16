@@ -65,27 +65,9 @@ fi
 
 # ── Step 2: Start MuJoCo simulator in Docker ───────────────────────────────
 log_step "Step 2/3: Starting MuJoCo simulator..."
-# Kill any existing simulator
-$DOCKER_COMPOSE exec -T "$CONTAINER" pkill -f "mujoco_ego_sim" 2>/dev/null || true
-sleep 1
-
-# Launch simulator in background
-$DOCKER_COMPOSE exec -d "$CONTAINER" \
-    bash -c 'export PYTHONPATH=/workspace/umi && nohup python3 -u /workspace/umi/stage_2/ego/simulation/mujoco_ego_sim.py --port 9999 > /tmp/ego_sim.log 2>&1 &'
-
-# Wait for simulator to be ready
-log_info "Waiting for simulator to initialize..."
-for i in $(seq 1 15); do
-    sleep 1
-    if $DOCKER_COMPOSE exec -T "$CONTAINER" cat /tmp/ego_sim.log 2>/dev/null | grep -q "Running"; then
-        log_info "Simulator ready (PID in container)"
-        break
-    fi
-    if [ $i -eq 15 ]; then
-        log_warn "Simulator may not be ready yet, continuing..."
-        $DOCKER_COMPOSE exec -T "$CONTAINER" cat /tmp/ego_sim.log 2>/dev/null || true
-    fi
-done
+# Use the restart script (proper TTY allocation for GLFW/X11)
+$DOCKER_COMPOSE exec "$CONTAINER" bash /workspace/umi/stage_2/ego/scripts/restart_ego_sim.sh
+log_info "Simulator launched"
 
 # ── Step 3: Start MediaPipe hand tracking on host ──────────────────────────
 log_step "Step 3/3: Starting MediaPipe hand tracking..."
