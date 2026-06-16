@@ -1,103 +1,61 @@
 #!/bin/bash
 # =============================================================================
-# EGO Teleop — 一键启动脚本
+# EGO Teleop — 一键启动（Docker 仿真器 + 提示宿主机追踪命令）
 #
-# 自动完成：
-#   1. 启动 Docker 容器（如未运行）
-#   2. 启动 MuJoCo 仿真器（Docker 内）
-#   3. 启动 MediaPipe 手部追踪（宿主机 conda）
-#   4. Ctrl+C 一键停止全部
-#
-# 用法：
-#   bash start_ego.sh
-#
-# 前提：
-#   - Docker 镜像已构建 (make build)
-#   - conda 环境 "ego" 已配置（含 mediapipe, pyrealsense2, matplotlib）
-#   - RealSense D435i 已连接
+# 用法: bash start_ego.sh
 # =============================================================================
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-DOCKER_COMPOSE="docker compose --project-directory ${SCRIPT_DIR}/docker"
+COMPOSE="docker compose --project-directory ${SCRIPT_DIR}/docker"
 CONTAINER="umi-dev"
-SIM_LOG="/tmp/ego_sim.log"
-CONDA_ENV="ego"
+RESTART="/workspace/umi/stage_2/ego/scripts/restart_ego_sim.sh"
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-NC='\033[0m'
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
+log()  { echo -e "${GREEN}[ego]${NC} $1"; }
+warn() { echo -e "${YELLOW}[ego]${NC} $1"; }
+err()  { echo -e "${RED}[ego]${NC} $1"; }
 
-log_info()  { echo -e "${GREEN}[ego]${NC} $1"; }
-log_warn()  { echo -e "${YELLOW}[ego]${NC} $1"; }
-log_err()   { echo -e "${RED}[ego]${NC} $1"; }
-log_step()  { echo -e "${CYAN}[ego]${NC} $1"; }
-
-# ── Cleanup on exit ────────────────────────────────────────────────────────
 cleanup() {
     echo ""
-    log_info "Shutting down..."
-    # Kill host-side mediapipe
-    if [ -n "$MEDIAPIPE_PID" ] && kill -0 "$MEDIAPIPE_PID" 2>/dev/null; then
-        kill "$MEDIAPIPE_PID" 2>/dev/null || true
-        log_info "MediaPipe tracking stopped"
-    fi
-    # Kill simulator in Docker
-    $DOCKER_COMPOSE exec -T "$CONTAINER" pkill -f "mujoco_ego_sim" 2>/dev/null || true
-    log_info "Simulator stopped"
-    log_info "Done."
+    log "Stopping simulator..."
+    $COMPOSE exec -T "$CONTAINER" pkill -f "mujoco_ego_sim" 2>/dev/null || true
+    log "Done."
     exit 0
 }
 trap cleanup INT TERM
 
-# ── Step 1: Ensure Docker container is running ─────────────────────────────
-log_step "Step 1/3: Checking Docker container..."
-if $DOCKER_COMPOSE ps --format json 2>/dev/null | grep -q "$CONTAINER"; then
-    log_info "Container '$CONTAINER' already running"
+# ── Step 1: Docker container ──────────────────────────────────────────
+if $COMPOSE ps --format json 2>/dev/null | grep -q "$CONTAINER"; then
+    log "Docker container already running"
 else
-    log_info "Starting container..."
-    $DOCKER_COMPOSE up -d
+    log "Starting Docker container..."
+    $COMPOSE up -d
     sleep 3
-    log_info "Container started"
+    log "Container started"
 fi
 
-# ── Step 2: Start MuJoCo simulator in Docker ───────────────────────────────
-log_step "Step 2/3: Starting MuJoCo simulator..."
-# Use the restart script (proper TTY allocation for GLFW/X11)
-$DOCKER_COMPOSE exec "$CONTAINER" bash /workspace/umi/stage_2/ego/scripts/restart_ego_sim.sh
-log_info "Simulator launched"
+# ── Step 2: Simulator ─────────────────────────────────────────────────
+log "Starting MuJoCo simulator..."
+$COMPOSE exec "$CONTAINER" bash "$RESTART"
+log "Simulator launched (window should appear)"
 
-# ── Step 3: Start MediaPipe hand tracking on host ──────────────────────────
-log_step "Step 3/3: Starting MediaPipe hand tracking..."
-
-# Check conda env
-if ! conda env list 2>/dev/null | grep -q "$CONDA_ENV"; then
-    log_err "Conda environment '$CONDA_ENV' not found!"
-    log_err "Create it: conda create -n ego python=3.10 && conda activate ego && pip install mediapipe pyrealsense2 matplotlib opencv-python"
-    exit 1
-fi
-
-# Check RealSense camera
-if ! python3 -c "import pyrealsense2 as rs; ctx=rs.context(); print(len(ctx.devices))" 2>/dev/null; then
-    log_warn "No RealSense device detected, but continuing anyway..."
-fi
-
-log_info "Launching MediaPipe tracker (close window or Ctrl+C to quit)"
+# ── Step 3: Instructions ──────────────────────────────────────────────
 echo ""
-log_info "══════════════════════════════════════════════════════════"
-log_info "  🎯 EGO Teleop running — move hand in front of camera"
-log_info "  Press 'q' or Ctrl+C to quit"
-log_info "══════════════════════════════════════════════════════════"
+echo -e "${CYAN}══════════════════════════════════════════════════════════════${NC}"
+echo -e "${CYAN}  🎯 Simulator ready — now run in ANOTHER terminal:${NC}"
+echo ""
+echo -e "  ${GREEN}conda activate ego${NC}"
+echo -e "  ${GREEN}cd ${SCRIPT_DIR}${NC}"
+echo -e "  ${GREEN}python stage_2/ego/mediapipe_ego.py --udp${NC}"
+echo ""
+echo -e "  ${YELLOW}Multi-camera (more robust):${NC}"
+echo -e "  ${GREEN}python stage_2/ego/mediapipe_ego.py --udp --camera-serials SN1 SN2${NC}"
+echo ""
+echo -e "${CYAN}  MuJoCo window: 1=Ego  2=Fixed  3/Space=Free   |   q=Quit${NC}"
+echo -e "${CYAN}══════════════════════════════════════════════════════════════${NC}"
 echo ""
 
-# Run mediapipe in conda env (foreground)
-eval "$(conda shell.bash hook)"
-conda activate "$CONDA_ENV"
-python3 "${SCRIPT_DIR}/stage_2/ego/mediapipe_ego.py" --udp &
-MEDIAPIPE_PID=$!
-
-# Wait for mediapipe to finish
-wait "$MEDIAPIPE_PID" 2>/dev/null || true
-cleanup
+# Tail simulator log until Ctrl+C
+log "Tailing simulator log (Ctrl+C to stop all)..."
+$COMPOSE exec "$CONTAINER" tail -f /tmp/ego_sim.log 2>/dev/null || true
