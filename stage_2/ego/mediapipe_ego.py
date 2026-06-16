@@ -41,6 +41,49 @@ def _extract_confidence(handedness) -> float:
             return 0.0
 
 
+def _compute_palm_orientation(landmarks) -> tuple:
+    """Compute palm orientation quaternion from MediaPipe landmarks.
+
+    Uses wrist(0), index_mcp(5), pinky_mcp(17) to define the palm frame.
+    Returns (qx, qy, qz, qw) in camera frame.
+    """
+    # Get key landmarks
+    wrist = np.array([landmarks[0].x, landmarks[0].y, landmarks[0].z])
+    index_mcp = np.array([landmarks[5].x, landmarks[5].y, landmarks[5].z])
+    pinky_mcp = np.array([landmarks[17].x, landmarks[17].y, landmarks[17].z])
+    middle_mcp = np.array([landmarks[9].x, landmarks[9].y, landmarks[9].z])
+
+    # Palm normal (Z): cross of index→pinky and wrist→middle
+    x_axis = pinky_mcp - index_mcp
+    x_axis = x_axis / (np.linalg.norm(x_axis) + 1e-8)
+    y_axis = middle_mcp - wrist
+    y_axis = y_axis / (np.linalg.norm(y_axis) + 1e-8)
+    z_axis = np.cross(x_axis, y_axis)
+    z_axis = z_axis / (np.linalg.norm(z_axis) + 1e-8)
+    # Re-orthogonalize Y
+    y_axis = np.cross(z_axis, x_axis)
+
+    rot_matrix = np.column_stack([x_axis, y_axis, z_axis])
+    # Convert to quaternion (qx, qy, qz, qw)
+    from scipy.spatial.transform import Rotation
+    quat = Rotation.from_matrix(rot_matrix).as_quat()
+    return (float(quat[0]), float(quat[1]), float(quat[2]), float(quat[3]))
+
+
+def _compute_gripper_openness(landmarks) -> float:
+    """Compute gripper openness from thumb-index pinch distance.
+
+    Uses distance between thumb tip(4) and index tip(8), normalized to [0,1].
+    0 = fully closed (pinching), 1 = fully open.
+    """
+    thumb_tip = np.array([landmarks[4].x, landmarks[4].y, landmarks[4].z])
+    index_tip = np.array([landmarks[8].x, landmarks[8].y, landmarks[8].z])
+    dist = np.linalg.norm(thumb_tip - index_tip)
+    # Normalize: typical range 0.02 (closed) to 0.15 (wide open)
+    openness = np.clip((dist - 0.02) / 0.13, 0.0, 1.0)
+    return float(openness)
+
+
 # ═══════════════════════════════════════════════════════════════
 # Multi-camera support
 # ═══════════════════════════════════════════════════════════════
@@ -53,6 +96,8 @@ class CameraResult:
         default_factory=lambda: np.zeros((480, 640, 3), dtype=np.uint8))
     hand_keypoints: list = field(default_factory=list)
     hand_wrist_xyz: tuple = None  # (rx, ry, rz) in robot workspace
+    hand_wrist_quat: tuple = None  # (qx, qy, qz, qw) palm orientation
+    hand_gripper: float = 0.0     # 0=closed, 1=open
     hand_confidence: float = 0.0
     hand_label: str = ""
     fps: float = 0.0
@@ -163,6 +208,10 @@ class CameraCapture:
                         rz = (1.0 - w_lm.y) * 0.3 + 0.15
                         rx = (1.0 - w_lm.z) * 0.3 + 0.05
                         wrist_xyz = (rx, ry, rz)
+                        # Compute palm orientation from landmarks
+                        palm_quat = _compute_palm_orientation(hlm.landmark)
+                        # Compute gripper openness (thumb-index pinch)
+                        gripper_open = _compute_gripper_openness(hlm.landmark)
 
             fps = 1.0 / max(time.time() - t_last, 0.001)
             t_last = time.time()
@@ -185,6 +234,8 @@ class CameraCapture:
                     rgb_display=rgb_display,
                     hand_keypoints=hand_keypoints,
                     hand_wrist_xyz=wrist_xyz,
+                    hand_wrist_quat=palm_quat,
+                    hand_gripper=gripper_open,
                     hand_confidence=best_confidence,
                     hand_label=best_label,
                     fps=fps,
@@ -380,10 +431,12 @@ def main():
             # ── UDP send: best-confidence result ──
             if udp_sock and best.hand_wrist_xyz is not None:
                 rx, ry, rz = best.hand_wrist_xyz
+                qx, qy, qz, qw = best.hand_wrist_quat or (0, 0, 0, 1)
                 kp = best.hand_keypoints[0] if best.hand_keypoints else []
                 udp_data = json_mod.dumps({
-                    "wrist": [rx, ry, rz, 0, 0, 0, 1],
+                    "wrist": [rx, ry, rz, qx, qy, qz, qw],
                     "keypoints": kp,
+                    "gripper": best.hand_gripper,
                     "confidence": best.hand_confidence,
                     "camera": best.serial,
                 })
