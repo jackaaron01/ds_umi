@@ -12,6 +12,8 @@ class HandToRobotTransform:
     The calibration parameters (R, offset, scale) can be:
       - Default hardcoded values (Quest3 → robot convention mapping)
       - Loaded from a YAML calibration file (see calibrate.py)
+      - Direct passthrough (passthrough=True): identity transform, used when
+        the hand tracking already outputs robot-frame workspace coordinates.
     """
 
     # Default rotation: Quest3 convention (+X right, +Y up, +Z backward)
@@ -27,16 +29,23 @@ class HandToRobotTransform:
         scale: float = 3.0,
         offset: np.ndarray = None,
         rotation: np.ndarray = None,
+        passthrough: bool = False,
     ):
-        self.scale = scale
-        self.offset = (
-            offset
-            if offset is not None
-            else np.array([0.5, 0.0, 0.2])  # robot workspace center
-        )
-        self._R_quest_to_robot = (
-            rotation if rotation is not None else self.DEFAULT_ROTATION
-        )
+        self._passthrough = passthrough
+        if passthrough:
+            self.scale = 1.0
+            self.offset = np.zeros(3)
+            self._R_quest_to_robot = np.eye(3)
+        else:
+            self.scale = scale
+            self.offset = (
+                offset
+                if offset is not None
+                else np.array([0.5, 0.0, 0.2])  # robot workspace center
+            )
+            self._R_quest_to_robot = (
+                rotation if rotation is not None else self.DEFAULT_ROTATION
+            )
 
     def transform_position(self, p_quest: np.ndarray) -> np.ndarray:
         """Map Quest3 wrist position to robot end-effector target position."""

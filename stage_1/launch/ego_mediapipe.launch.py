@@ -28,26 +28,35 @@ def generate_launch_description():
             parameters=[{"port": 9999, "hand": "right"}],
             output="screen",
         ),
-        # Hand mapper: IK → joint/gripper commands
+        # Hand mapper: IK → joint/gripper commands (MuJoCo mesh model IK)
         Node(
             package="teleop_bridge",
             executable="hand_mapper",
             name="hand_mapper",
-            parameters=[{"hand": "right", "scale": 0.5}],
+            parameters=[{
+                "hand": "right",
+                "scale": 1.0,
+                "lowpass_alpha": 0.08,
+                "passthrough": True,
+                "mujoco_model": "/workspace/umi/stage_2/simulation/xarm_mesh.xml",
+            }],
             output="screen",
         ),
-        # Safety guardian (mock mode for testing)
+        # Safety guardian (MuJoCo simulation mode)
         Node(
             package="safety",
-            executable="safety_node",
+            executable="safety_guardian",
             name="safety_guardian",
-            parameters=[{"robot_mode": "mujoco"}],
+            parameters=[{
+                "robot_mode": "mujoco",
+                "position_delta_limit": 0.15,
+            }],
             output="screen",
         ),
         # Recorder (optional — use ROS2 service to start/stop)
         Node(
             package="recorder",
-            executable="recorder_node",
+            executable="recorder",
             name="recorder",
             output="screen",
         ),

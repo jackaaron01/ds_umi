@@ -37,7 +37,7 @@ class MujocoRobotInterface(RobotInterface):
 
     def __init__(self, model_path: str = None, control_rate: float = 60.0):
         self._model_path = model_path or os.path.join(
-            os.path.dirname(__file__), "xarm6.xml"
+            os.path.dirname(__file__), "xarm_mesh.xml"
         )
         self._control_rate = control_rate
         self._dt = 1.0 / control_rate
@@ -56,6 +56,7 @@ class MujocoRobotInterface(RobotInterface):
         self._target_q = np.zeros(6)
         self._target_gripper = 0.0
         self._last_move_time = 0.0
+        self._steps_per_cycle = 1  # computed after model load
 
     # ── RobotInterface methods ──────────────────────────────────────────
 
@@ -64,8 +65,14 @@ class MujocoRobotInterface(RobotInterface):
             try:
                 self._model = mujoco.MjModel.from_xml_path(self._model_path)
                 self._data = mujoco.MjData(self._model)
-                # Initialize to zero configuration
-                self._data.qpos[:] = 0.0
+                # Compute physics steps needed per control cycle
+                model_dt = self._model.opt.timestep
+                self._steps_per_cycle = max(1, int(1.0 / self._control_rate / model_dt))
+                # Initialize to a neutral home pose (not zeros — avoids singularities)
+                home = np.array([0.0, -0.3, 0.0, 1.2, 0.0, 0.0])
+                self._data.qpos[:6] = home
+                self._data.ctrl[:6] = home
+                self._target_q = home.copy()
                 mujoco.mj_forward(self._model, self._data)
                 self._q = self._data.qpos[:6].copy()
                 self._connected = True
@@ -137,9 +144,8 @@ class MujocoRobotInterface(RobotInterface):
     # ── MuJoCo physics ──────────────────────────────────────────────────
 
     def _move_nonblocking(self, positions):
-        """Set actuator targets and step physics once."""
+        """Set actuator targets only — physics stepping is done by step_physics()."""
         self._data.ctrl[:6] = positions
-        mujoco.mj_step(self._model, self._data)
         self._last_move_time = time.time()
         return True
 
@@ -158,10 +164,11 @@ class MujocoRobotInterface(RobotInterface):
         return True  # Return true even on timeout (close enough)
 
     def step_physics(self):
-        """Step the simulation forward by one timestep."""
+        """Step the simulation forward by one full control cycle."""
         with self._lock:
             if self._connected:
-                mujoco.mj_step(self._model, self._data)
+                for _ in range(self._steps_per_cycle):
+                    mujoco.mj_step(self._model, self._data)
 
     def render_offscreen(self, width=640, height=480):
         """Render the current simulation state to an image array (RGB)."""

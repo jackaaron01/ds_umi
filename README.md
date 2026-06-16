@@ -117,6 +117,82 @@ make exec cmd="bash /workspace/umi/sim_teleop.sh"
 
 键盘控制：W/S 前后、A/D 左右、Q/E 升降、I/K 俯仰、J/L 横滚、U/O 偏航、空格夹爪、R 复位、Tab 录制
 
+## EGO 遥操作（RealSense + MediaPipe 手部追踪）
+
+无需 VR 头显，用 RealSense D435i 深度相机 + MediaPipe Hands 实现第一人称手部遥操作。
+
+### 架构
+
+```
+📷 RealSense D435i (宿主机)
+    ↓ RGB 640×480 @ 30fps
+🖐️ MediaPipe Hands (21 关键点 + 手腕位姿)
+    ↓ UDP JSON → Docker :9999
+🎯 mujoco_ego_sim.py (单文件，无 ROS2 依赖)
+    ├── UDP 接收
+    ├── MuJoCo IK (位置 + 零空间正则化)
+    ├── MuJoCo 物理仿真 (kp=200, damping=28, 60Hz)
+    └── 3D 可视化 (launch_passive + STL 网格)
+```
+
+### 核心设计：零空间正则化 IK
+
+xArm6 有 6 个关节但位置目标只有 3 自由度，存在无穷多解。传统的阻尼伪逆 IK 在不同帧会收敛到不同解，导致机械臂抖动。
+
+解决方案：
+- **零空间投影** `(I - J⁺J)` 在不影响末端位置的关节空间子空间内
+- **拉向 home 姿态** `α * (q_home - q_current)`，温柔地将关节拉向预设的中间配置
+- **q_init = 当前仿真状态**，保证连续性
+- 同一手部位姿始终收敛到同一关节构型
+
+| 参数 | 值 | 说明 |
+|------|-----|------|
+| kp | 200 | 伺服刚度（临界阻尼 2√200=28） |
+| damping | 28 | 关节阻尼 |
+| nullspace_gain | 0.05 | 零空间拉向 home 的力度 |
+| IK damping | 0.1 | 数值 IK 阻尼 |
+| max_step | 0.08 rad | 每次 IK 迭代最大步长 |
+| physics_steps | 8/cycle | 每控制周期物理步数 (dt=0.002s × 8 = 0.016s) |
+
+### 启动
+
+```bash
+# 1. 启动 Docker 容器
+make up
+
+# 2. 启动 EGO 仿真器（Docker 内）
+make exec cmd="bash /workspace/umi/docker/restart_ego_sim.sh"
+
+# 3. 启动 MediaPipe 手部追踪（宿主机）
+conda activate ego
+python stage_2/mediapipe_ego.py --udp
+```
+
+控制键：`r` 录制，`s` 截图，`q` 退出
+
+### 手部→工作空间映射
+
+| 手部坐标 (MediaPipe) | 机器人坐标 (xArm6) | 范围 |
+|------|------|------|
+| X (左右, 0-1) | Y (左右) | ±0.2m |
+| Y (上下, 0-1) | Z (上下) | 0.15–0.45m |
+| Z (深度, 0-1) | X (前后) | 0.05–0.35m |
+
+### 模型
+
+使用 `models/urdf2mjcf/xarm/` 下的 **STL 网格模型**（xarm_mesh.xml），7 个 STL 文件精确还原 xArm6 外观。
+
+### 文件清单
+
+| 文件 | 说明 |
+|------|------|
+| `stage_2/mediapipe_ego.py` | 宿主机端：RealSense + MediaPipe + UDP |
+| `stage_2/simulation/mujoco_ego_sim.py` | Docker 端：仿真器主程序（单文件） |
+| `stage_2/simulation/mujoco_ik.py` | MuJoCo Jacobian IK 求解器（零空间正则化） |
+| `stage_2/simulation/xarm_mesh.xml` | xArm6 STL 网格 MJCF 模型 |
+| `stage_2/simulation/xarm6.xml` | 简化 DH MJCF 模型（备用） |
+| `docker/restart_ego_sim.sh` | 仿真器重启脚本 |
+
 ## 模型训练（完整命令参考）
 
 ### 数据生成
@@ -272,8 +348,10 @@ Model Registry                  ← 元数据 + 评估结果
 | 仿真 | `simulation/keyboard_teleop.py` | 键盘遥操作（WASD, Tab 录制） |
 | 仿真 | `simulation/viewer_node.py` | MuJoCo 3D 可视化 |
 | 仿真 | `simulation/mujoco_interface.py` | MuJoCo RobotInterface 实现 |
+| 仿真 | `simulation/mujoco_ego_sim.py` | **EGO 遥操作仿真器**（单文件，零空间 IK） |
+| 仿真 | `simulation/mujoco_ik.py` | MuJoCo Jacobian IK + 零空间正则化 |
 | 仿真 | `simulation/xarm6.xml` | 精确 DH MJCF 模型（FK 误差 0mm） |
-| 仿真 | `simulation/xarm_color/` | STL 网格彩色模型 |
+| 仿真 | `simulation/xarm_mesh.xml` | STL 网格 xArm6 模型（EGO 默认） |
 
 ## 关键发现与技术决策
 

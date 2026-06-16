@@ -25,11 +25,15 @@ class HandMapper(Node):
         self.declare_parameter("scale", 3.0)
         self.declare_parameter("lowpass_alpha", 0.3)
         self.declare_parameter("calibration_file", "")
+        self.declare_parameter("mujoco_model", "")
+        self.declare_parameter("passthrough", False)
 
         hand = self.get_parameter("hand").value
         scale = self.get_parameter("scale").value
         alpha = self.get_parameter("lowpass_alpha").value
         calib_file = self.get_parameter("calibration_file").value
+        mujoco_model = self.get_parameter("mujoco_model").value
+        passthrough = self.get_parameter("passthrough").value
 
         if transform is not None:
             self._transform = transform
@@ -37,14 +41,29 @@ class HandMapper(Node):
         elif calib_file:
             self._transform = HandToRobotTransform.from_yaml(calib_file)
             self.get_logger().info(f"Loaded calibration from {calib_file}")
+        elif passthrough:
+            self._transform = HandToRobotTransform(passthrough=True)
+            self.get_logger().info("Using direct workspace passthrough")
         else:
             self._transform = HandToRobotTransform(scale=scale)
         self._alpha = alpha
         self._filtered_position = None  # 3-vector, initialised on first message
         self._filtered_orientation = None  # quaternion [w, x, y, z], initialised on first message
-        self._q_current = np.array([0.0, -0.5, 0.0, 1.5, 0.0, 0.0])
+        self._q_current = np.array([0.0, -0.3, 0.0, 1.2, 0.0, 0.0])  # home pose
+        self._q_nominal = self._q_current.copy()  # null-space target (fixed home)
         self._ik_times = deque(maxlen=100)
         self._T_last = None  # cache last IK target to skip redundant solves
+
+        # MuJoCo IK integration
+        self._mujoco_ik = None
+        if mujoco_model:
+            import sys
+            sys.path.insert(0, "/workspace/umi")
+            from stage_2.simulation.mujoco_ik import MujocoIK
+            self._mujoco_ik = MujocoIK(mujoco_model)
+            self.get_logger().info(f"Using MuJoCo IK (model={mujoco_model})")
+        else:
+            self.get_logger().info("Using DH-parameter IK")
 
         self._pub_joint_cmd = self.create_publisher(
             JointState, "/teleop/command/joints", 10
@@ -111,15 +130,30 @@ class HandMapper(Node):
         T_target[:3, :3] = R_target
         T_target[:3, 3] = p_robot
 
-        # Skip IK if target pose hasn't changed significantly (prevents oscillation)
+        # Skip IK if target pose hasn't changed (prevents redundant computation)
         if self._T_last is not None:
             err = pose_error(self._T_last, T_target)
-            if np.linalg.norm(err) < 0.005:  # <5mm+0.005rad — skip redundant IK
-                return  # reuse last joint command, no re-publish needed
+            if np.linalg.norm(err) < 0.002:  # <2mm — skip truly redundant IK
+                return
         self._T_last = T_target.copy()
 
         t0 = time.perf_counter()
-        q_sol, success, iters, error = solve_ik(T_target, q_init=self._q_current, max_iterations=80)
+        if self._mujoco_ik is not None:
+            # Use MuJoCo-based IK (mesh model kinematics)
+            q_robot_xyzw = np.array([
+                q_robot_wxyz[1], q_robot_wxyz[2], q_robot_wxyz[3], q_robot_wxyz[0]
+            ])
+            q_sol = self._mujoco_ik.solve(
+                p_robot, q_robot_xyzw,
+                q_init=self._q_current,
+                q_nominal=self._q_nominal,
+                damping=0.2,
+            )
+            success = True
+            iters = 0
+            error = 0.0
+        else:
+            q_sol, success, iters, error = solve_ik(T_target, q_init=self._q_current, max_iterations=80)
         ik_dt = time.perf_counter() - t0
         self._ik_times.append(ik_dt)
         if len(self._ik_times) >= 100:
@@ -134,9 +168,8 @@ class HandMapper(Node):
             self._ik_times.clear()
 
         if success:
-            self._q_current = q_sol
-        else:
-            self._q_current = q_sol  # use best-effort as seed for next frame
+            self._q_current = q_sol.copy()
+        # On failure, keep old q_current as seed for next frame
 
         cmd = JointState()
         cmd.header.stamp = self.get_clock().now().to_msg()

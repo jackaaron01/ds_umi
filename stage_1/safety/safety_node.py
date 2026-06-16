@@ -137,6 +137,10 @@ class SafetyGuardian(Node):
         if self._robot is None:
             return
         try:
+            # Always step physics (crucial for MuJoCo — drives simulation forward
+            # even when no new commands arrive, so the robot reaches its target)
+            if hasattr(self._robot, 'step_physics'):
+                self._robot.step_physics()
             joint_state = self._robot.get_joint_state()
         except Exception:
             self.get_logger().error("Failed to read joint state", throttle_duration_sec=2.0)
