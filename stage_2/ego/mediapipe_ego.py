@@ -147,7 +147,7 @@ class CameraCapture:
                     hand_keypoints.append(kp_list)
 
                     conf = _extract_confidence(hd)
-                    if conf > best_confidence:
+                    if conf >= best_confidence:
                         best_confidence = conf
                         best_kp = kp_list
                         try:
