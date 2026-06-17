@@ -363,11 +363,10 @@ def main():
     parser.add_argument("--cam-rpy", type=float, nargs=3,
                         default=[0, 0, 0],
                         help="Camera RPY rotation [roll,pitch,yaw] (degrees)")
-    # Incremental mode
-    parser.add_argument("--scale", type=float, default=1.5,
-                        help="Position scaling factor")
-    parser.add_argument("--no-incremental", action="store_true",
-                        help="Disable incremental mode (use absolute mapping)")
+    parser.add_argument("--scale", type=float, default=1.5)
+    parser.add_argument("--no-incremental", action="store_true")
+    parser.add_argument("--head-mounted", action="store_true",
+                        help="Head-mounted camera preset (only rotation matters in incremental mode)")
     args = parser.parse_args()
 
     OUT = args.output or os.path.join(PROJ, "..", "data", "mediapipe_ego.h5")
@@ -396,11 +395,17 @@ def main():
     print(f"Cameras ({n_cams}): {camera_serials}")
 
     # ── Calibration ──
+    if args.head_mounted:
+        # Head-mounted: camera on head looking down. Adjust RPY to match.
+        # Default: user facing robot. cam forward(→robot+X), right(→robot-Y), down(→robot-Z)
+        if args.cam_rpy == [0, 0, 0]:
+            args.cam_rpy = [30, 0, 0]  # 30° pitch-down (looking at hands)
     T_cam2robot = _build_cam_to_robot(args.cam_pos, args.cam_rpy)
-    print(f"Calibration: pos={args.cam_pos} rpy={args.cam_rpy}°")
-    print(f"  T_cam2robot:\n{T_cam2robot}")
-    print(f"  Incremental mode: {'OFF' if args.no_incremental else 'ON (Space to grip)'}")
-    print(f"  Scale: {args.scale}")
+    mode_str = "HEAD-MOUNTED" if args.head_mounted else "DESK-MOUNTED"
+    print(f"Calibration ({mode_str}): rpy={args.cam_rpy}° scale={args.scale}")
+    print(f"  Incremental: {'OFF' if args.no_incremental else 'ON (Space=grip)'}")
+    print(f"  NOTE: in incremental mode, only --cam-rpy matters (axis directions).")
+    print(f"  --cam-pos is irrelevant — hand delta is mapped directly to robot delta.")
 
     # ── Launch capture threads ──
     captures: list = []
