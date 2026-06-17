@@ -74,7 +74,7 @@
                 <geom type="mesh" rgba="0.25 0.25 0.3 1" mesh="base_link_stl"/>
 
                 <!-- End-effector site + ego camera -->
-                <site name="ee" pos="0 0 0.13" size="0.01" rgba="1 0 0 1"/>
+                <site name="ee" pos="0 0 0.13" euler="0 -90 0" size="0.01" rgba="1 0 0 1"/>
                 <camera name="ego" pos="0.0 0.03 0.13" xyaxes="0 1 0 0 0 1" fovy="65"/>
 
                 <!-- ── Gripper ── -->
