@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import cv2
 import h5py
+from scipy.spatial.transform import Rotation
 
 try:
     import mediapipe as mp
@@ -106,6 +107,88 @@ def _build_cam_to_robot(pos_m: list, rpy_deg: list) -> np.ndarray:
     return T
 
 
+# ── IMU Head Tracker (D435i built-in gyro + accel) ───────────────────
+
+class IMUHeadTracker:
+    """Tracks head orientation from D435i IMU (gyro + accel).
+
+    Uses a complementary filter: fast gyro integration + slow gravity correction.
+    Outputs a quaternion representing the camera's orientation relative to its
+    initial pose at startup.
+    """
+
+    def __init__(self):
+        self.quat = np.array([0.0, 0.0, 0.0, 1.0])  # (x, y, z, w)
+        self._last_ts = None
+        self._gyro_bias = np.zeros(3)
+
+    def update(self, gyro: np.ndarray, accel: np.ndarray, ts: float):
+        """gyro [rad/s], accel [m/s²], ts [seconds] monotonic.
+        Returns current orientation quaternion (x, y, z, w).
+        """
+        if self._last_ts is None:
+            self._last_ts = ts
+            return self.quat
+
+        dt = ts - self._last_ts
+        self._last_ts = ts
+        if dt <= 0 or dt > 0.5:
+            return self.quat
+
+        # Remove bias
+        g = gyro - self._gyro_bias
+
+        # Gyro integration: delta quaternion
+        angle = np.linalg.norm(g) * dt
+        if angle > 1e-8:
+            axis = g / np.linalg.norm(g)
+            from scipy.spatial.transform import Rotation
+            dq = Rotation.from_rotvec(axis * angle).as_quat()
+            self.quat = self._qmul(self.quat, dq)
+
+        # Gravity correction (slow, prevents drift)
+        accel_norm = accel / (np.linalg.norm(accel) + 1e-8)
+        from scipy.spatial.transform import Rotation
+        R = Rotation.from_quat(self.quat).as_matrix()
+        gravity_expected = R.T @ np.array([0, 0, -1.0])
+        correction = np.cross(accel_norm, gravity_expected)
+        corr_mag = np.linalg.norm(correction)
+        if corr_mag > 1e-8:
+            corr_angle = corr_mag * 0.01 * dt  # 1% correction per second
+            corr_axis = correction / corr_mag
+            dq_corr = Rotation.from_rotvec(corr_axis * corr_angle).as_quat()
+            self.quat = self._qmul(dq_corr, self.quat)
+
+        # Normalize
+        self.quat = self.quat / np.linalg.norm(self.quat)
+
+        # Slow bias estimation
+        self._gyro_bias += 0.0001 * g
+
+        return self.quat
+
+    def reset(self):
+        self.quat = np.array([0.0, 0.0, 0.0, 1.0])
+        self._last_ts = None
+        self._gyro_bias = np.zeros(3)
+
+    @staticmethod
+    def _qmul(q1, q2):
+        x1, y1, z1, w1 = q1
+        x2, y2, z2, w2 = q2
+        return np.array([
+            w1*x2 + x1*w2 + y1*z2 - z1*y2,
+            w1*y2 - x1*z2 + y1*w2 + z1*x2,
+            w1*z2 + x1*y2 - y1*x2 + z1*w2,
+            w1*w2 - x1*x2 - y1*y2 - z1*z2,
+        ])
+
+    def reset(self):
+        self.quat = np.array([0.0, 0.0, 0.0, 1.0])
+        self._last_ts = None
+        self._gyro_bias = np.zeros(3)
+
+
 # ── Camera Capture (threaded, with depth support) ────────────────────
 
 @dataclass
@@ -120,6 +203,7 @@ class CameraResult:
     hand_confidence: float = 0.0
     hand_label: str = ""
     fps: float = 0.0
+    head_quat: tuple = None     # IMU head orientation (x,y,z,w)
 
 
 class CameraCapture:
@@ -146,6 +230,10 @@ class CameraCapture:
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
+    def reset_imu(self):
+        if hasattr(self, '_imu'):
+            self._imu.reset()
+
     def stop(self):
         self._running = False
         if self._thread:
@@ -164,6 +252,9 @@ class CameraCapture:
         config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
         if self.use_depth:
             config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+        # IMU streams for head tracking (200Hz each)
+        config.enable_stream(rs.stream.accel, rs.format.motion_xyz32f, 200)
+        config.enable_stream(rs.stream.gyro, rs.format.motion_xyz32f, 200)
         profile = pipeline.start(config)
         self._pipeline = pipeline
 
@@ -178,6 +269,10 @@ class CameraCapture:
             static_image_mode=False, max_num_hands=self.max_hands,
             min_detection_confidence=0.3, min_tracking_confidence=0.3)
         self._hands = hands
+
+        imu = IMUHeadTracker()
+        self._imu = imu
+        head_quat = (0.0, 0.0, 0.0, 1.0)
 
         t_last = time.time()
         while self._running:
@@ -200,6 +295,19 @@ class CameraCapture:
                 depth_frame = frames.get_depth_frame()
                 if depth_frame:
                     depth_image = np.asanyarray(depth_frame.get_data())
+
+            # ── IMU: integrate gyro + accel for head orientation ──
+            accel_frame = frames.first_or_default(rs.stream.accel)
+            gyro_frame = frames.first_or_default(rs.stream.gyro)
+            if accel_frame and gyro_frame:
+                accel = accel_frame.as_motion_frame().get_motion_data()
+                gyro = gyro_frame.as_motion_frame().get_motion_data()
+                ts_imu = accel_frame.get_timestamp() * 1e-3  # ms → s
+                hq = imu.update(
+                    np.array([gyro.x, gyro.y, gyro.z]),
+                    np.array([accel.x, accel.y, accel.z]),
+                    ts_imu)
+                head_quat = (float(hq[0]), float(hq[1]), float(hq[2]), float(hq[3]))
 
             rgb_rgb = cv2.cvtColor(rgb_image, cv2.COLOR_BGR2RGB)
             results = hands.process(rgb_rgb)
@@ -277,7 +385,7 @@ class CameraCapture:
                     hand_keypoints=hand_keypoints, wrist_cam=wrist_cam,
                     hand_wrist_quat=palm_quat, hand_gripper=gripper_open,
                     hand_confidence=best_confidence, hand_label=best_label,
-                    fps=fps)
+                    fps=fps, head_quat=head_quat)
 
 
 # ── Globals for key handling ─────────────────────────────────────────
@@ -287,11 +395,13 @@ HAND_CONNECTIONS = mp_hands.HAND_CONNECTIONS
 PROJ = os.path.dirname(os.path.abspath(__file__))
 _quit = False
 _grip_locked = False
-_grip_origin = None  # [x, y, z] in robot frame, recorded at grip press
+_grip_origin = None
+_imu_reset = False
 
 
 def _on_key(event):
     global _quit, _grip_locked, _grip_origin
+    global _imu_reset
     if event.key == 'q':
         _quit = True
     elif event.key == ' ':
@@ -302,6 +412,9 @@ def _on_key(event):
             _grip_locked = False
             _grip_origin = None
             print("  [GRIP] RELEASED")
+    elif event.key == 'r':
+        _imu_reset = True
+        print("  [IMU] Reset — recalibrate head forward")
 
 
 def draw_hand_landmarks(image, hand_landmarks, handedness=None):
@@ -346,7 +459,7 @@ def draw_hand_landmarks(image, hand_landmarks, handedness=None):
 # ── Main ─────────────────────────────────────────────────────────────
 
 def main():
-    global _quit, _grip_locked, _grip_origin
+    global _quit, _grip_locked, _grip_origin, _imu_reset
     parser = argparse.ArgumentParser(description="EGO Hand Tracking")
     parser.add_argument("--record", action="store_true")
     parser.add_argument("--output", default=None)
@@ -450,6 +563,13 @@ def main():
 
     try:
         while not _quit:
+            # Handle IMU reset (press 'r')
+            if _imu_reset:
+                for cap in captures:
+                    cap.reset_imu()
+                _imu_reset = False
+                print("  [IMU] Head orientation reset — current pose = forward")
+
             all_results = [cap.result for cap in captures]
             best = max(all_results, key=lambda r: r.hand_confidence)
 
@@ -472,9 +592,19 @@ def main():
 
             # ── Transform + UDP ──
             if udp_sock and best.wrist_cam is not None:
-                # Camera → Robot transform
+                # IMU compensation: rotate hand from tilted camera frame
+                # to initial camera frame (head-motion-stabilized)
                 cx, cy, cz = best.wrist_cam
-                cam_pos = np.array([cx, cy, cz, 1.0])
+                hand_cam = np.array([cx, cy, cz])
+                if best.head_quat is not None:
+                    hq = best.head_quat
+                    R_head = Rotation.from_quat(hq).as_matrix()
+                    hand_stable = R_head @ hand_cam
+                else:
+                    hand_stable = hand_cam
+
+                # Camera → Robot transform
+                cam_pos = np.array([*hand_stable, 1.0])
                 robot_pos = (T_cam2robot @ cam_pos)[:3]
 
                 # Position mapping: absolute when FREE, incremental when GRIPPED
