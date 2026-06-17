@@ -71,9 +71,13 @@ class EgoSimulator:
         self._running = True
 
         # Filter state (anti-oscillation)
-        self._last_target_pos = None   # for deadband
+        self._last_delta = np.zeros(3)   # for deadband
         self._ctrl_filtered = HOME.copy()  # low-pass filtered joint cmd
-        self._ctrl_alpha = 0.15  # LP filter coefficient (lower = more smoothing)
+        self._ctrl_alpha = 0.06  # stronger LP filter
+        self._deadband_m = 0.005  # 5mm
+        self._ee_ref = None      # reference EE position (set on first target)
+        self._ee_ref_rot = None  # reference EE rotation
+        self._had_target = False
 
         # Camera control
         self._cam_ego_id = mujoco.mj_name2id(
@@ -167,41 +171,55 @@ class EgoSimulator:
             step_count = 0
             while self._running and viewer.is_running():
                 with self._lock:
-                    target_pos = self._target_pos
-                    target_quat = self._target_quat
+                    delta_pos = self._target_pos  # host sends delta now
+                    delta_quat = self._target_quat
                     target_gripper = self._target_gripper
 
-                if target_pos is not None:
-                    # Deadband: only re-solve IK if target moved > 3mm
+                if delta_pos is not None:
+                    # Auto-sync: on first target, lock reference to current EE
+                    if not self._had_target or self._ee_ref is None:
+                        ee_pos = self.data.site_xpos[self.site_id].copy()
+                        ee_mat = self.data.site_xmat[self.site_id].reshape(3, 3)
+                        self._ee_ref = ee_pos
+                        self._ee_ref_rot = ee_mat
+                        self._had_target = True
+                        self._last_delta = np.zeros(3)
+                        self._ctrl_filtered = self.data.qpos[:N_JOINTS].copy()
+                        print(f"[sim] Auto-synced: EE ref={np.round(ee_pos, 3)}")
+
+                    # Apply delta to reference → absolute IK target
+                    abs_target = self._ee_ref + delta_pos
+
+                    # Deadband: only solve IK if delta changed
                     do_ik = True
-                    if self._last_target_pos is not None:
-                        delta = np.linalg.norm(target_pos - self._last_target_pos)
-                        do_ik = delta > 0.003
+                    delta_norm = np.linalg.norm(delta_pos - self._last_delta)
+                    if delta_norm <= self._deadband_m:
+                        do_ik = False
                     if do_ik:
                         q_current = self.data.qpos[:N_JOINTS].copy()
                         q_sol = self._ik.solve(
-                            target_pos=target_pos,
-                            target_quat=target_quat,
+                            target_pos=abs_target,
+                            target_quat=delta_quat,
                             q_init=q_current,
                             q_nominal=HOME,
                         )
                         if q_sol is not None:
                             self._ctrl_filtered = q_sol
-                        self._last_target_pos = target_pos.copy()
+                        self._last_delta = delta_pos.copy()
 
-                    # Low-pass filter: smooth transition to IK target
+                    # Low-pass filter
                     alpha = self._ctrl_alpha
                     self.data.ctrl[:N_JOINTS] = (
                         alpha * self._ctrl_filtered +
                         (1 - alpha) * self.data.ctrl[:N_JOINTS])
 
-                    # Gripper (no filtering needed)
+                    # Gripper
                     if self._gripper_id >= 0:
                         self.data.ctrl[self._gripper_id] = (
                             target_gripper * GRIPPER_MAX)
                 else:
-                    # No hand — hold position (keep current ctrl)
-                    pass
+                    self._had_target = False
+                    self._ee_ref = None
 
                 # Step physics
                 for _ in range(8):

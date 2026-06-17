@@ -397,6 +397,9 @@ _quit = False
 _grip_locked = False
 _grip_origin = None
 _imu_reset = False
+_hand_was_present = False  # auto-sync: track hand presence
+_auto_origin = None        # auto-sync origin on first detection
+_auto_ref_pos = None       # robot EE reference at auto-sync time
 
 
 def _on_key(event):
@@ -459,7 +462,7 @@ def draw_hand_landmarks(image, hand_landmarks, handedness=None):
 # ── Main ─────────────────────────────────────────────────────────────
 
 def main():
-    global _quit, _grip_locked, _grip_origin, _imu_reset
+    global _quit, _grip_locked, _grip_origin, _imu_reset, _hand_was_present, _auto_origin
     parser = argparse.ArgumentParser(description="EGO Hand Tracking")
     parser.add_argument("--record", action="store_true")
     parser.add_argument("--output", default=None)
@@ -591,39 +594,43 @@ def main():
                 ])
 
             # ── Transform + UDP ──
-            if udp_sock and best.wrist_cam is not None:
-                # IMU compensation: rotate hand from tilted camera frame
-                # to initial camera frame (head-motion-stabilized)
+            hand_present = best.wrist_cam is not None
+            if hand_present:
+                global _hand_was_present, _auto_origin
+                # IMU compensation
                 cx, cy, cz = best.wrist_cam
                 hand_cam = np.array([cx, cy, cz])
                 if best.head_quat is not None:
-                    hq = best.head_quat
-                    R_head = Rotation.from_quat(hq).as_matrix()
+                    R_head = Rotation.from_quat(best.head_quat).as_matrix()
                     hand_stable = R_head @ hand_cam
                 else:
                     hand_stable = hand_cam
 
-                # Camera → Robot transform
-                cam_pos = np.array([*hand_stable, 1.0])
-                robot_pos = (T_cam2robot @ cam_pos)[:3]
+                # Camera → Robot transform (rotation only — axes mapping)
+                cam_h = np.array([*hand_stable, 1.0])
+                robot_pos = (T_cam2robot @ cam_h)[:3]
 
-                # Position mapping: absolute when FREE, incremental when GRIPPED
+                # Auto-sync: on first detection, lock origin
+                if not _hand_was_present:
+                    _auto_origin = robot_pos.copy()
+                    _hand_was_present = True
+                    print(f"  [AUTO-SYNC] Origin: "
+                          f"[{_auto_origin[0]:.3f},{_auto_origin[1]:.3f},{_auto_origin[2]:.3f}]")
+
+                # Compute delta from origin
                 if _grip_locked:
                     if _grip_origin is None:
                         _grip_origin = robot_pos.copy()
-                        print(f"  [GRIP] Origin locked: "
-                              f"[{robot_pos[0]:.3f},{robot_pos[1]:.3f},{robot_pos[2]:.3f}]")
+                        print(f"  [GRIP] Locked")
                     delta = robot_pos - _grip_origin
-                    rx = delta[0] * args.scale
-                    ry = delta[1] * args.scale
-                    rz = delta[2] * args.scale
                 else:
-                    # Absolute mode by default — robot follows hand directly
-                    rx = float(robot_pos[0]) * args.scale
-                    ry = float(robot_pos[1]) * args.scale
-                    rz = float(robot_pos[2]) * args.scale
+                    delta = robot_pos - _auto_origin
 
-                if rx is not None:
+                rx = float(delta[0]) * args.scale
+                ry = float(delta[1]) * args.scale
+                rz = float(delta[2]) * args.scale
+
+                if udp_sock:
                     qx, qy, qz, qw = best.hand_wrist_quat or (0, 0, 0, 1)
                     kp = best.hand_keypoints[0] if best.hand_keypoints else []
                     udp_data = json_mod.dumps({
@@ -634,6 +641,9 @@ def main():
                         "camera": best.serial,
                     })
                     udp_sock.sendto(udp_data.encode(), ("127.0.0.1", args.udp_port))
+            else:
+                global _hand_was_present
+                _hand_was_present = False
 
             # ── Overlay ──
             fps_avg = np.mean([r.fps for r in all_results])
