@@ -171,10 +171,9 @@ class EgoSimulator:
                         self.data.ctrl[self._gripper_id] = (
                             target_gripper * GRIPPER_MAX)
                 else:
-                    # No hand detected — slowly return to home
-                    q_current = self.data.qpos[:N_JOINTS].copy()
+                    # No hand / grip released — hold current position
                     self.data.ctrl[:N_JOINTS] = (
-                        0.99 * q_current + 0.01 * HOME)
+                        self.data.qpos[:N_JOINTS].copy())
 
                 # Step physics
                 for _ in range(8):
