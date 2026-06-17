@@ -479,7 +479,7 @@ def main():
     parser.add_argument("--cam-rpy", type=float, nargs=3,
                         default=[0, 0, 0],
                         help="Camera RPY rotation [roll,pitch,yaw] (degrees)")
-    parser.add_argument("--scale", type=float, default=1.5)
+    parser.add_argument("--scale", type=float, default=0.6)
     parser.add_argument("--no-incremental", action="store_true")
     parser.add_argument("--head-mounted", action="store_true",
                         help="Head-mounted camera preset (only rotation matters in incremental mode)")
