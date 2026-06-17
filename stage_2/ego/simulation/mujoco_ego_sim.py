@@ -49,8 +49,18 @@ class EgoSimulator:
         self.data.ctrl[:N_JOINTS] = HOME
         mujoco.mj_forward(self.model, self.data)
 
-        # IK solver (6-DOF, position + orientation)
+        # IK solver (6-DOF, weighted SE(3) error)
         self._ik = MujocoIK(model_path, site_name="ee")
+        self._ik.q_last = HOME.copy()
+
+        # Print initial EE pose for reference
+        home_pos, home_rot = self._ik.fk(HOME)
+        print(f"[sim] Model loaded — {self._ik.n_joints} arm joints")
+        print(f"[sim] HOME pose: {np.array2string(np.degrees(HOME), precision=1)} deg")
+        print(f"[sim] HOME EE pos: {np.array2string(home_pos, precision=3)}")
+        print(f"[sim] Gripper: {GRIPPER_MAX:.2f} rad max opening")
+        print(f"[sim] IK: weighted SE(3) error (pos=45x, rot=5x), "
+              f"trust={0.3}rad, smooth={0.05}, reg=[5,1,1,5,1,1]")
 
         # Latest hand target (thread-safe)
         self._lock = threading.Lock()
