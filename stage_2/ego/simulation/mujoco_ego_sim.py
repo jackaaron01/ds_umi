@@ -220,6 +220,10 @@ class EgoSimulator:
                 else:
                     self._had_target = False
                     self._ee_ref = None
+                    # Slowly return to home (2% per step)
+                    q_current = self.data.qpos[:N_JOINTS].copy()
+                    self.data.ctrl[:N_JOINTS] = (
+                        0.98 * q_current + 0.02 * HOME)
 
                 # Step physics
                 for _ in range(8):
