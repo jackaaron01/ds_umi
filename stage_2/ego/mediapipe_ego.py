@@ -477,23 +477,21 @@ def main():
                 cam_pos = np.array([cx, cy, cz, 1.0])
                 robot_pos = (T_cam2robot @ cam_pos)[:3]
 
-                # Incremental mode
-                if not args.no_incremental:
-                    if _grip_locked:
-                        if _grip_origin is None:
-                            _grip_origin = robot_pos.copy()
-                            print(f"  [GRIP] Origin locked: "
-                                  f"[{robot_pos[0]:.3f},{robot_pos[1]:.3f},{robot_pos[2]:.3f}]")
-                        delta = robot_pos - _grip_origin
-                        rx = delta[0] * args.scale
-                        ry = delta[1] * args.scale
-                        rz = delta[2] * args.scale
-                    else:
-                        # No grip — no UDP (robot stays)
-                        rx = ry = rz = None
+                # Position mapping: absolute when FREE, incremental when GRIPPED
+                if _grip_locked:
+                    if _grip_origin is None:
+                        _grip_origin = robot_pos.copy()
+                        print(f"  [GRIP] Origin locked: "
+                              f"[{robot_pos[0]:.3f},{robot_pos[1]:.3f},{robot_pos[2]:.3f}]")
+                    delta = robot_pos - _grip_origin
+                    rx = delta[0] * args.scale
+                    ry = delta[1] * args.scale
+                    rz = delta[2] * args.scale
                 else:
-                    # Absolute mode
-                    rx, ry, rz = float(robot_pos[0]), float(robot_pos[1]), float(robot_pos[2])
+                    # Absolute mode by default — robot follows hand directly
+                    rx = float(robot_pos[0]) * args.scale
+                    ry = float(robot_pos[1]) * args.scale
+                    rz = float(robot_pos[2]) * args.scale
 
                 if rx is not None:
                     qx, qy, qz, qw = best.hand_wrist_quat or (0, 0, 0, 1)
