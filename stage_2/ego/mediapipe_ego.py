@@ -596,7 +596,6 @@ def main():
             # ── Transform + UDP ──
             hand_present = best.wrist_cam is not None
             if hand_present:
-                global _hand_was_present, _auto_origin
                 # IMU compensation
                 cx, cy, cz = best.wrist_cam
                 hand_cam = np.array([cx, cy, cz])
@@ -642,7 +641,6 @@ def main():
                     })
                     udp_sock.sendto(udp_data.encode(), ("127.0.0.1", args.udp_port))
             else:
-                global _hand_was_present
                 _hand_was_present = False
 
             # ── Overlay ──
