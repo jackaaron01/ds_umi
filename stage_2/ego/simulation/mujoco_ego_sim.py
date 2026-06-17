@@ -22,7 +22,8 @@ from mujoco_ik import MujocoIK
 # ── Model ──────────────────────────────────────────────────────────────
 MODEL = os.path.join(os.path.dirname(__file__), "xarm6_gripper.xml")
 N_JOINTS = 6
-HOME = np.array([0.0, -0.6109, -0.6981, 0.0, 1.3788, 0.0])  # rad
+# HOME: orin_VR xarm_teleop_wrist.json [0, -20, -75, 0, 90, 0] deg
+HOME = np.deg2rad([0.0, -20.0, -75.0, 0.0, 90.0, 0.0])
 GRIPPER_MAX = 0.85  # drive_joint max opening (rad)
 
 
@@ -68,6 +69,11 @@ class EgoSimulator:
         self._target_quat = None  # (qx, qy, qz, qw) EE orientation
         self._target_gripper = 0.0  # 0=closed, 1=open
         self._running = True
+
+        # Filter state (anti-oscillation)
+        self._last_target_pos = None   # for deadband
+        self._ctrl_filtered = HOME.copy()  # low-pass filtered joint cmd
+        self._ctrl_alpha = 0.15  # LP filter coefficient (lower = more smoothing)
 
         # Camera control
         self._cam_ego_id = mujoco.mj_name2id(
@@ -166,24 +172,36 @@ class EgoSimulator:
                     target_gripper = self._target_gripper
 
                 if target_pos is not None:
-                    # 6-DOF IK with orientation target
-                    q_current = self.data.qpos[:N_JOINTS].copy()
-                    q_sol = self._ik.solve(
-                        target_pos=target_pos,
-                        target_quat=target_quat,
-                        q_init=q_current,
-                        q_nominal=HOME,
-                    )
-                    if q_sol is not None:
-                        self.data.ctrl[:N_JOINTS] = q_sol
-                    # Gripper
+                    # Deadband: only re-solve IK if target moved > 3mm
+                    do_ik = True
+                    if self._last_target_pos is not None:
+                        delta = np.linalg.norm(target_pos - self._last_target_pos)
+                        do_ik = delta > 0.003
+                    if do_ik:
+                        q_current = self.data.qpos[:N_JOINTS].copy()
+                        q_sol = self._ik.solve(
+                            target_pos=target_pos,
+                            target_quat=target_quat,
+                            q_init=q_current,
+                            q_nominal=HOME,
+                        )
+                        if q_sol is not None:
+                            self._ctrl_filtered = q_sol
+                        self._last_target_pos = target_pos.copy()
+
+                    # Low-pass filter: smooth transition to IK target
+                    alpha = self._ctrl_alpha
+                    self.data.ctrl[:N_JOINTS] = (
+                        alpha * self._ctrl_filtered +
+                        (1 - alpha) * self.data.ctrl[:N_JOINTS])
+
+                    # Gripper (no filtering needed)
                     if self._gripper_id >= 0:
                         self.data.ctrl[self._gripper_id] = (
                             target_gripper * GRIPPER_MAX)
                 else:
-                    # No hand / grip released — hold current position
-                    self.data.ctrl[:N_JOINTS] = (
-                        self.data.qpos[:N_JOINTS].copy())
+                    # No hand — hold position (keep current ctrl)
+                    pass
 
                 # Step physics
                 for _ in range(8):

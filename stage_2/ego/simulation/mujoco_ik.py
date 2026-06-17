@@ -82,7 +82,7 @@ class MujocoIK:
 
         # Nominal pose
         if q_nominal is None:
-            q_nominal = np.array([0.0, -0.6109, -0.6981, 0.0, 1.3788, 0.0])
+            q_nominal = np.deg2rad([0.0, -20.0, -75.0, 0.0, 90.0, 0.0])
         q_nominal = np.asarray(q_nominal, dtype=np.float64)[:nv]
 
         # Regularization weights (default: penalize j1/j4 more, like orin_VR)

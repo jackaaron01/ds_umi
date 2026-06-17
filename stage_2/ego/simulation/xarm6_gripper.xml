@@ -19,8 +19,8 @@
   </asset>
 
   <default>
-    <joint limited="true" damping="2"/>
-    <position ctrllimited="true" forcerange="-50 50" kp="300"/>
+    <joint limited="true" damping="10"/>
+    <position ctrllimited="true" forcerange="-50 50" kp="100"/>
   </default>
 
   <worldbody>
