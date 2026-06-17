@@ -78,6 +78,8 @@ class EgoSimulator:
         self._ee_ref = None      # reference EE position (set on first target)
         self._ee_ref_rot = None  # reference EE rotation
         self._had_target = False
+        self._last_udp_time = 0.0  # timestamp of last UDP packet
+        self._udp_timeout = 0.3    # seconds before treating target as lost
 
         # Camera control
         self._cam_ego_id = mujoco.mj_name2id(
@@ -113,8 +115,9 @@ class EgoSimulator:
                 gripper = msg.get("gripper", 0.0)
                 with self._lock:
                     self._target_pos = np.array(wrist[:3], dtype=np.float64)
-                    self._target_quat = tuple(wrist[3:7])  # qx,qy,qz,qw
+                    self._target_quat = tuple(wrist[3:7])
                     self._target_gripper = float(gripper)
+                    self._last_udp_time = time.time()
             except socket.timeout:
                 pass
             except Exception:
@@ -171,9 +174,14 @@ class EgoSimulator:
             step_count = 0
             while self._running and viewer.is_running():
                 with self._lock:
-                    delta_pos = self._target_pos  # host sends delta now
+                    delta_pos = self._target_pos
                     delta_quat = self._target_quat
                     target_gripper = self._target_gripper
+                    last_udp = self._last_udp_time
+
+                # Timeout: if no UDP for >0.3s, treat as hand lost
+                if delta_pos is not None and (time.time() - last_udp) > self._udp_timeout:
+                    delta_pos = None
 
                 if delta_pos is not None:
                     # Auto-sync: on first target, lock reference to current EE
