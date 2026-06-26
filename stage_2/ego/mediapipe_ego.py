@@ -630,7 +630,13 @@ def main():
                 rz = float(delta[2]) * args.scale
 
                 if udp_sock:
-                    qx, qy, qz, qw = best.hand_wrist_quat or (0, 0, 0, 1)
+                    # Transform palm quaternion from camera to robot frame
+                    palm_quat = best.hand_wrist_quat or (0, 0, 0, 1)
+                    R_cam2robot_rot = T_cam2robot[:3, :3]
+                    palm_rot_cam = Rotation.from_quat(palm_quat)
+                    palm_rot_robot = Rotation.from_matrix(
+                        R_cam2robot_rot @ palm_rot_cam.as_matrix())
+                    qx, qy, qz, qw = palm_rot_robot.as_quat()
                     kp = best.hand_keypoints[0] if best.hand_keypoints else []
                     udp_data = json_mod.dumps({
                         "wrist": [rx, ry, rz, qx, qy, qz, qw],
