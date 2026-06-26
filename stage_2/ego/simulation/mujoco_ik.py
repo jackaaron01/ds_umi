@@ -104,25 +104,38 @@ class MujocoIK:
         for _ in range(max_iter):
             mujoco.mj_forward(self._model, self._data)
 
-            # ── Build weighted error ──
+            # ── Build error and Jacobian ──
             site_pos = self._data.site_xpos[self._site_id]
             site_mat = self._data.site_xmat[self._site_id].reshape(3, 3)
+
+            # Jacobian (computed once for both pos and rot)
+            jac_pos = np.zeros((3, self._nv_full))
+            jac_rot = np.zeros((3, self._nv_full))
+            mujoco.mj_jac(self._model, self._data, jac_pos, jac_rot,
+                          self._data.site_xpos[self._site_id], self._body_id)
 
             pos_err = target_pos - site_pos
 
             if use_orientation:
                 site_rot = Rotation.from_matrix(site_mat)
                 target_rot = Rotation.from_quat(target_quat_xyzw)
-                # Rotation error: log(R_target * R_site^T) as rotvec
                 rot_err = target_rot * site_rot.inv()
                 rot_vec = rot_err.as_rotvec()
-                # Weighted error
+                # Weighted error and Jacobian
                 err = np.concatenate([
                     pos_weight * pos_err, rot_weight * rot_vec])
+                J = np.vstack([
+                    pos_weight * jac_pos[:, :nv],
+                    rot_weight * jac_rot[:, :nv],
+                ])
+                m = 6
             else:
-                err = pos_err
+                # Position-only with weighting (prevents reg domination)
+                err = pos_weight * pos_err
+                J = pos_weight * jac_pos[:, :nv]
+                m = 3
 
-            # ── Cost (for best-solution tracking) ──
+            # ── Cost ──
             task_cost = 0.5 * float(np.linalg.norm(err) ** 2)
             reg_cost = 0.5 * float(
                 np.sum(reg_weights * (self._data.qpos[:nv] - q_nominal) ** 2))
@@ -138,23 +151,6 @@ class MujocoIK:
             if np.max(np.abs(pos_err)) < tolerance and (
                 not use_orientation or np.linalg.norm(rot_vec) < tolerance):
                 break
-
-            # ── Jacobian ──
-            jac_pos = np.zeros((3, self._nv_full))
-            jac_rot = np.zeros((3, self._nv_full))
-            mujoco.mj_jac(self._model, self._data, jac_pos, jac_rot,
-                          self._data.site_xpos[self._site_id], self._body_id)
-
-            if use_orientation:
-                # Weighted Jacobian
-                J = np.vstack([
-                    pos_weight * jac_pos[:, :nv],
-                    rot_weight * jac_rot[:, :nv],
-                ])
-                m = 6
-            else:
-                J = jac_pos[:, :nv]
-                m = 3
 
             # ── Damped pseudoinverse ──
             JJT = J @ J.T
